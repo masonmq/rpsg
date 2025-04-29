@@ -1,7 +1,7 @@
-# rpsg
-Realistic and Privacy-Preserving Synthetic Data Generation
 
-<h1 align="center"> Private Seeds, Public LLMs: Realistic and Privacy-Preserving Synthetic Data Generation</h1>
+<h1 align="center"> Private Seeds, Public LLMs: Realistic and Privacy-Preserving 
+  
+  Synthetic Data Generation</h1>
 
 In this work, we presented RPSG, a realistic and privacy-preserving synthetic data generation method. Empirical results demonstrate that RPSG consistently outperforms SOTA baselines in generating high-quality synthetic data, achieving strong utility while safeguarding privacy. We hope this work highlights the importance of integrating privacy considerations into synthetic data generation and inspires further research and real-world adoption of privacy-aware practices.
 
