@@ -52,13 +52,13 @@ bash scripts/{LLMs}/*.sh
 ```
 
 ### Azure API
-We use Azure OpenAI API to access closed-source LLMs, please get your api key via [Azure](https://learn.microsoft.com/en-us/azure/ai-services/openai/quickstart?tabs=command-line,python&pivots=programming-language-python)
+We use Azure API to access closed-source LLMs, please get your api key via [Azure](https://learn.microsoft.com/en-us/azure/ai-services/openai/quickstart?tabs=command-line,python&pivots=programming-language-python)
 ```python
 DeepSeek_CONFIG={
         'DeepSeek-R1':{ "openai_api_key":  "YOUR_AZURE_OPENAI_API_KEY",
-                            "openai_api_base": "YOUR_AZURE_OPENAI_ENDPOINT",
-                            "engine": 'DeepSeek-R1',
-                            },
+                        "openai_api_base": "YOUR_AZURE_OPENAI_ENDPOINT",
+                        "engine": 'DeepSeek-R1',
+                      },
     }
 ```
 
