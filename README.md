@@ -20,11 +20,11 @@ conda activate rpsg
 
 ### Data Preparation
 
-Datasets are located at  `data/{dataset}` where `dataset` is `sd`,  and `pubmed`.
+Datasets are located at  `data/{dataset}` where `dataset` is `sd` and `pubmed`.
 
 Download PubMed `train.csv` by executing:
 ```bash 
-bash scripts/download_data.sh # download yelp train.csv and pubmed train.csv
+bash scripts/download_data.sh
 ```
 Dataset description: 
 - SD: We collected real-world SD content from Reddit to target posts authored by LSE populations. We first selected subreddits associated with financial hardship and poverty, and applied a keyword-based filtering strategy designed to capture language related to economic challenges. We collected posts published between January 1, 2024, and March 31, 2025, ensuring that the majority of data falls after the training cutoffs of both GPT-4 (October 2023) and Phi-4 (June 2024). This timing minimizes the likelihood that these LLMs were exposed to our dataset during training, supporting its value for evaluating model generalization and privacy behavior. The final dataset consists of 8,948, 1,000, and 1,000 posts in the training, validation, and test sets, respectively. All posts were publicly available and collected in accordance with Reddit’s terms of service.
