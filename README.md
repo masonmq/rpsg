@@ -6,15 +6,7 @@
 In this work, we presented RPSG, a realistic and privacy-preserving synthetic data generation method. Empirical results demonstrate that RPSG consistently outperforms SOTA baselines in generating high-quality synthetic data, achieving strong utility while safeguarding privacy. We hope this work highlights the importance of integrating privacy considerations into synthetic data generation and inspires further research and real-world adoption of privacy-aware practices.
 
 <p align="center">
-  <img src="figures/overview1.png" width="100%">
-</p>
-
-
- Under $\epsilon=1$, Aug-PE produces DP synthetic text that yields competitive utility with the SOTA DP-SGD finetuning baselines on OpenReview data.
-
-
-<p align="center">
-  <img src="figures/overview2.png" width="70%">
+  <img src="figures/figure1.png" width="100%">
 </p>
 
 
