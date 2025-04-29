@@ -5,7 +5,7 @@
 
 In this work, we presented RPSG, a realistic and privacy-preserving synthetic data generation method. Empirical results demonstrate that RPSG consistently outperforms SOTA baselines in generating high-quality synthetic data, achieving strong utility while safeguarding privacy. 
 <p align="center">
-  <img src="figures/figure1.png" width="80%">
+  <img src="figures/figure1.png" width="81%">
 </p>
 
 
