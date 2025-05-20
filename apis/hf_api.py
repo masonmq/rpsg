@@ -44,10 +44,8 @@ class HFAPI(API):
         self.use_subcategory = use_subcategory
         if use_subcategory:
             self.subcategory_dict = {}
-            #self.subcategory_dict['yelp'] = get_subcategories("yelp")
             self.subcategory_dict['sd'] = get_subcategories("sd")
             self.subcategory_dict['pubmed'] = get_subcategories("pubmed")
-            #self.subcategory_dict['openreview'] = get_subcategories("openreview")
 
         model_name_or_path = self.model_type
 
@@ -163,31 +161,19 @@ class HFAPI(API):
             # generation is proportional to the label distributions
             num_seq_to_generate = round(
                 prompt_counter[prompt] * ratio_generation_training)
+            # for aug-pe generating initial synthetic seeds via gpt-2
             if self.use_subcategory:                    
-                if "yelp" in self.variation_type:
-                    category_label = prompt.split(
-                        "\t")[0].replace('Business Category: ', '')
-                    rand_keyword_idx = random.randrange(
-                        len(self.subcategory_dict['yelp'][category_label]))
-                    keyword = self.subcategory_dict['yelp'][category_label][rand_keyword_idx]
-                    full_prompt_text = f'{prompt} with keyword {keyword}'
-                    
-                elif "openreview" in self.variation_type:
-                    rand_keyword_idx = random.randrange(
-                        len(self.subcategory_dict['openreview']))
-                    keyword = self.subcategory_dict['openreview'][rand_keyword_idx]
-                    full_prompt_text = f"Suppose that you are a {keyword}. Write a paper review based on " + prompt
-
-                elif "pubmed" in self.variation_type and "phi4" not in self.variation_type:
-                    full_prompt_text = "Using a variety of sentence structures, write an abstract for a medical research paper: "
+                if "pubmed" in self.variation_type and "phi4" not in self.variation_type:
+                    full_prompt_text = "Please act as a sentence generator for the medical domain. Generated sentences should mimic the style of PubMed journal articles, using a variety of sentence structures: "
                     
                 elif "sd" in self.variation_type and "phi4" not in self.variation_type:
                     full_prompt_text = "Using a variety of sentence structures, write a passage in the tone of a person who is {poor or broke or homeless or unemployment or not being able to afford basic necessities}: "
+                # for aug-pe generating initial synthetic seeds via phi-4
                 elif "phi4" in self.variation_type:
                     if self.variation_type == "sd_phi4_rephrase_tone":
                         selected_style = ALL_SD_styles[random.randrange(
                             len(ALL_SD_styles))]
-                        system_prompt = f"Using a variety of sentence structures, write a passage {selected_style} of a person who is poor or broke or homeless or unemployment or not being able to afford basic necessities: "
+                        system_prompt = f"Using a variety of sentence structures, write a passage {selected_style} of a person who is poor or broke or homeless or unemployment or unable to afford basic necessities: "
                     else:
                         selected_style = ALL_PUBMED_styles[random.randrange(
                             len(ALL_PUBMED_styles))]
@@ -317,28 +303,21 @@ class HFAPI(API):
 
     def _rephrase(self, label, sequence, variation_type):
 
-        if variation_type == "yelp_rephrase_tone":
-            selected_style = ALL_styles[random.randrange(len(ALL_styles))]
-            prompt = "Based on {}, please rephrase the following sentences {}:\n{} \n".format(
-                label, selected_style, sequence)
-        elif variation_type == "openreview_rephrase_tone":
-            selected_style = ALL_OPENREVIEW_styles[random.randrange(
-                len(ALL_OPENREVIEW_styles))]
-            prompt = "Based on {}, please rephrase the following sentences {} as a paper review:\n{} \n".format(
-                label, selected_style, sequence)
-        elif variation_type == "pubmed_rephrase_tone":
+        # for generating synthetic variant via gpt-2
+        if variation_type == "pubmed_rephrase_tone":
             selected_style = ALL_PUBMED_styles[random.randrange(
                 len(ALL_PUBMED_styles))]
-            prompt = "Please rephrase the following sentences as an abstract for medical research paper in clear and natural English while preserving meaning:\n{} \n".format(sequence)
+            prompt = "Please rephrase the following sentences as an abstract for medical research paper and preserve the original meaning:\n{} \n".format(sequence)
         elif variation_type == "sd_rephrase_tone":
             selected_style = ALL_SD_styles[random.randrange(
                 len(ALL_SD_styles))]
             prompt = "Rephrase the following passage {}:\n{} \n".format(selected_style, sequence)
+        # for generating synthetic variant via phi-4
         elif "phi4" in self.variation_type:
             if self.variation_type == "sd_phi4_rephrase_tone":
-                system_prompt = f"Below is an abstracted self-disclosure statement. Use its words to infer the original meaning and rewrite it into a realistic self-disclosure passage in a common tone, using neutral language, avoid overly vivid metaphors or highly emotional wording:"
+                system_prompt = f"Below is an abstracted self-disclosure statement. Use it to infer the original meaning and rewrite it into a realistic self-disclosure passage:"
             else:
-                system_prompt = f"Below is an abstracted abstract of a medical research paper. Rewrite this in a common tone, using neutral language, avoid overly vivid metaphors or highly emotional wording:"            
+                system_prompt = f"Below is an abstracted abstract of a medical research paper. Rewrite this and preserve the original meaning:"            
             messages = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": sequence}

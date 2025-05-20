@@ -17,11 +17,14 @@ import tqdm
 import os
 from .utils import timeout, Timer
 
+# Try to disable logging like "error_code=429"
 logger = logging.getLogger("openai")
 logger.disabled = True
 
+### API specific ###
 OPENAI_API_KEYS = os.environ.get(
     "OPENAI_API_KEYS", os.environ.get("OPENAI_API_KEY", None))
+#OPENAI_API_KEYS = os.getenv("AZURE_OPENAI_API_KEY")
 if isinstance(OPENAI_API_KEYS, str):
     OPENAI_API_KEYS = OPENAI_API_KEYS.split(",")
 OPENAI_ORGANIZATION_IDS = os.environ.get("OPENAI_ORGANIZATION_IDS", None)
@@ -130,6 +133,8 @@ def openai_completions(
     is_chat = decoding_kwargs.get(
         "requires_chatml", _requires_chatml(model_name))
     if is_chat:
+        # prompts = [_prompt_to_chatml(prompt) for prompt in prompts]
+        # prompts = [prompt for prompt in prompts]
         num_procs = num_procs or 4
         batch_size = batch_size or 1
 
@@ -169,18 +174,28 @@ def openai_completions(
                     )
                 )
 
+    # flatten the list and select only the text
+    # completions_text = [completion["text"] for completion_batch in completions for completion in completion_batch]
     completions_text = []
     for completion_batch in completions:
         for completion in completion_batch:
             try:
+                #completions_text.append(completion["text"])
                 completions_text.append(completion["text"].encode('utf-8', errors='ignore').decode('utf-8'))               
             except Exception as e:
                 logging.warning(f"completions_text: {e}. {completion}")
                 completions_text.append("")
     
+    logging.info(f"Use {n_examples} prompts to complete {len(completions_text)} examples in {t}.")
 
+    # price = [
+    #     1["total_tokens"] * _get_price_per_token(model_name)
+    #     for completion_batch in completions
+    #     for completion in completion_batch
+    # ]
     avg_time = [t.duration / n_examples] * len(completions_text)
 
+    # return dict(completions=completions_text, price_per_example=price, time_per_example=avg_time)
     return dict(completions=completions_text, time_per_example=avg_time)
 
 
@@ -228,20 +243,21 @@ def _openai_completion_helper(
             #logging.info(f"try {i}")
         try:
             if is_chat:
+                # completion_batch = openai.ChatCompletion.create(messages=prompt_batch[0], **curr_kwargs)
                 completion_batch = _call_chat_completion(
                     messages=prompt_batch[0][0], **curr_kwargs)  # batch size is 1
 
                 choices = completion_batch.choices
                 for choice in choices:
-                    
+                    # assert choice.message.role == "assistant"
                     if choice.message.content == "":
-                       
+                        # annoying doesn't allow empty string
                         choice["text"] = " "
                     else:
                         choice["text"] = choice.message.content
 
                     if choice.message.get("function_call"):
-                        
+                        # currently we only use function calls to get a JSON object => return raw text of json
                         choice["text"] = choice.message.function_call.arguments
 
             else:
@@ -254,17 +270,21 @@ def _openai_completion_helper(
                     len(prompt_batch)
             break
         except TimeoutError:
-
+            #logging.info(
+                #f"Seemingly openai is frozen, wait {sleep_time*i}s and retry")
+            # Exponential backoff with jitter (randomized delay)
             delay = sleep_time * (1.2 ** min(i, 3)) + random.uniform(0, 0.1)
             time.sleep(delay)
         except openai.error.InvalidRequestError:
-            
+            # Suppress the InvalidRequestError without logging anything
             break
         except openai.error.AuthenticationError:
-            
+            # Suppress the AuthenticationError without logging anything
             break
         except Exception as e:
-
+            #logging.warning(f"OpenAIError: {e}.")
+            #if isinstance(e, (openai.error.InvalidRequestError, openai.error.AuthenticationError)):          
+                #break  # get filtered
             if "Please reduce your prompt" in str(e):
                 kwargs["max_tokens"] = int(kwargs["max_tokens"] * 0.8)
                 logging.warning(
@@ -275,10 +295,11 @@ def _openai_completion_helper(
                     raise e
             else:
                 if "rate limit" in str(e).lower():
-                    
+                    #logging.warning("Hit request rate limit; retrying...")
                     pass
                 else:
-      
+                    #logging.warning(
+                        #f"Unknown error {e}. \n It's likely a rate limit so we are retrying...")
                     pass
                 if openai_organization_ids is not None and len(openai_organization_ids) > 1:
                     openai.organization = random.choice(
@@ -294,12 +315,10 @@ def _openai_completion_helper(
                 delay = sleep_time * (1.2 ** min(i, 3)) + random.uniform(0, 0.1)
                 time.sleep(delay)
     if choices is None:
+        #logging.info(f"try {retry + 1} but still no response, return None")
         choices = [dict(text=" ")]
 
     return choices
-
-
-
 
 def _requires_chatml(model: str) -> bool:
     """Whether a model requires the ChatML format."""
@@ -307,80 +326,4 @@ def _requires_chatml(model: str) -> bool:
     return "turbo" in model or "gpt-4" in model
 
 
-def _prompt_to_chatml(prompt: str, start_token: str = "<|im_start|>", end_token: str = "<|im_end|>"):
-    r"""Convert a text prompt to ChatML formal
 
-    Examples
-    --------
-    >>> prompt = (
-    ... "<|im_start|>system\n"
-    ... "You are a helpful assistant.\n<|im_end|>\n"
-    ... "<|im_start|>system name=example_user\nKnock knock.\n<|im_end|>\n<|im_start|>system name=example_assistant\n"
-    ... "Who's there?\n<|im_end|>\n<|im_start|>user\nOrange.\n<|im_end|>"
-    ... )
-    >>> print(prompt)
-    <|im_start|>system
-    You are a helpful assistant.
-    <|im_end|>
-    <|im_start|>system name=example_user
-    Knock knock.
-    <|im_end|>
-    <|im_start|>system name=example_assistant
-    Who's there?
-    <|im_end|>
-    <|im_start|>user
-    Orange.
-    <|im_end|>
-    >>> _prompt_to_chatml(prompt)
-    [{'content': 'You are a helpful assistant.', 'role': 'system'},
-      {'content': 'Knock knock.', 'role': 'system', 'name': 'example_user'},
-      {'content': "Who's there?", 'role': 'system', 'name': 'example_assistant'},
-      {'content': 'Orange.', 'role': 'user'}]
-    """
-    prompt = prompt.strip()
-    assert prompt.startswith(start_token)
-    assert prompt.endswith(end_token)
-
-    message = []
-    for p in prompt.split("<|im_start|>")[1:]:
-        newline_splitted = p.split("\n", 1)
-        role = newline_splitted[0].strip()
-        content = newline_splitted[1].split(end_token, 1)[0].strip()
-
-        if role.startswith("system") and role != "system":
-            # based on https://github.com/openai/openai-cookbook/blob/main/examples
-            # /How_to_format_inputs_to_ChatGPT_models.ipynb
-            # and https://github.com/openai/openai-python/blob/main/chatml.md it seems that system can specify a
-            # dictionary of other args
-            other_params = _string_to_dict(role.split("system", 1)[-1])
-            role = "system"
-        else:
-            other_params = dict()
-
-        message.append(dict(content=content, role=role, **other_params))
-
-    return message
-
-
-def _string_to_dict(to_convert):
-    r"""Converts a string with equal signs to dictionary. E.g.
-    >>> _string_to_dict(" name=user university=stanford")
-    {'name': 'user', 'university': 'stanford'}
-    """
-    return {s.split("=", 1)[0]: s.split("=", 1)[1] for s in to_convert.split(" ") if len(s) > 0}
-
-
-def _get_price_per_token(model):
-    """Returns the price per token for a given model"""
-    if "gpt-4" in model:
-        return (
-            0.03 / 1000
-        )  # that's not completely true because decoding is 0.06 but close enough given that most is context
-    elif "gpt-3.5-turbo" in model:
-        return 0.002 / 1000
-    elif "text-davinci-003" in model:
-        return 0.02 / 1000
-    else:
-        logging.warning(
-            f"Unknown model {model} for computing price per token.")
-        return np.nan
