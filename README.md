@@ -34,8 +34,10 @@ Dataset description:
 ### Generating Private Data Embeddings
 
 Pre-compute embeddings for private data :
-```bash  
-bash scripts/embeddings.sh --sd  
+```bash 
+# Reddit Dataset
+bash scripts/embeddings.sh --sd 
+# PubMed Dataset 
 bash scripts/embeddings.sh --pubmed       
 ```
 
@@ -47,7 +49,7 @@ bash scripts/embeddings.sh --pubmed
 ```bash 
 bash scripts/{LLMs}/*.sh
 # Replace `{LLMs}` with the names of LLMs. For example:
-# bash scripts/gpt-4o-mini/sd_g4o.sh leverages the gpt-4o-mini and the sd dataset
+# bash scripts/gpt-4o-mini/sd_g4o.sh leverages the gpt-4o-mini and the reddit dataset
 # bash scripts/hf/pubmed/rpsg-pubmed_phi4.sh leverages the phi-4 and the pubmed dataset
 ```
 
