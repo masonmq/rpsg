@@ -62,6 +62,9 @@ DeepSeek_CONFIG={
     }
 ```
 
+## Results
+The experimental results for Downstream Task Performance (Table 1), Lexical Diversity (Table 2), and Distributional and Semantic Similarity (Table 3) are located in the `results` directory.
+
 ## Acknowledgement
 
 - [AUG-PE](https://github.com/AI-secure/aug-pe)
