@@ -20,7 +20,7 @@ conda activate rpsg
 
 ### Data Preparation
 
-Datasets are located at  `data/{dataset}` where `dataset` is `sd` and `pubmed`.
+Datasets are located at  `data/{dataset}` where `dataset` is `reddit` and `pubmed`.
 
 Download PubMed `train.csv` by executing:
 ```bash 
@@ -36,7 +36,7 @@ Dataset description:
 Pre-compute embeddings for private data :
 ```bash 
 # Reddit Dataset
-bash scripts/embeddings.sh --sd 
+bash scripts/embeddings.sh --reddit 
 # PubMed Dataset 
 bash scripts/embeddings.sh --pubmed       
 ```
