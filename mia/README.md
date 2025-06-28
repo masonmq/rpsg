@@ -8,7 +8,7 @@ conda env create -f rpsg.yml
 conda activate rpsg
 ```
 
-### Run AUC Score
+### Evaluate the AUC score
 
 After launching the MI attacks, the corresponding .pkl files will be automatically generated. For instance, the directory `mia/rpsg_reddit_phi4` contains the result files for the case where synthetic data was generated using Phi-4 on the Reddit dataset.
 
