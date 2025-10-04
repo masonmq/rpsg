@@ -214,4 +214,3 @@ dependencies:
       - xxhash==3.3.0
       - yarl==1.9.2
       - zipp==3.21.0
-prefix: /home/mason/shared/enter/envs/sd
