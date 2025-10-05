@@ -46,10 +46,12 @@ def evaluate_pii_extraction(dataset, ner_classifier, csv_fname):
 
         if extracted_pii:
             total_successful_extractions += 1
+            #total_pii_count += len(extracted_pii)
 
     results = {
         "round": 1,
         "successful_extractions": total_successful_extractions,
+        #"total_pii_found": total_pii_count
     }
 
     if os.path.isfile(csv_fname):
@@ -62,6 +64,7 @@ def evaluate_pii_extraction(dataset, ner_classifier, csv_fname):
 
     print(f"Results saved to {csv_fname}")
     print(f"Total successful extractions: {total_successful_extractions}")
+    #print(f"Total PII found: {total_pii_count}")
 
 def main():
     parser = argparse.ArgumentParser()
@@ -78,3 +81,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

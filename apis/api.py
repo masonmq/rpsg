@@ -16,6 +16,16 @@ class API(ABC):
 
     @classmethod
     def from_command_line_args(cls, args):
+        """
+        Creating the API from command line arguments.
+
+        Args:
+            args: (List[str]):
+            The command line arguments
+        Returns:
+            API:
+                The API object.
+        """
         args = cls.command_line_parser().parse_args(args)
         print(args)
         return cls(**vars(args), args=args)

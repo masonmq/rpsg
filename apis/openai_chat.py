@@ -32,7 +32,7 @@ if isinstance(OPENAI_ORGANIZATION_IDS, str):
     OPENAI_ORGANIZATION_IDS = OPENAI_ORGANIZATION_IDS.split(",")
 openai.api_type = 'azure'
 #openai.api_version = '2024-08-01-preview' # 3.5-turbo
-openai.api_version = '2024-05-01-preview' # 4o-mini
+openai.api_version = '2025-01-01-preview' # 4o-mini
 
 
 __all__ = ["openai_completions"]

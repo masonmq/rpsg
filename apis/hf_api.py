@@ -44,23 +44,15 @@ class HFAPI(API):
         self.use_subcategory = use_subcategory
         if use_subcategory:
             self.subcategory_dict = {}
+            #self.subcategory_dict['yelp'] = get_subcategories("yelp")
             self.subcategory_dict['sd'] = get_subcategories("sd")
             self.subcategory_dict['pubmed'] = get_subcategories("pubmed")
+            #self.subcategory_dict['openreview'] = get_subcategories("openreview")
 
         model_name_or_path = self.model_type
 
         if self.model_type == "microsoft/phi-4":
             model_name = "microsoft/phi-4"
-            self.tokenizer = transformers.AutoTokenizer.from_pretrained(model_name,local_files_only=True)
-            self.tokenizer.padding_side = "left"
-            self.model = transformers.AutoModelForCausalLM.from_pretrained(
-                model_name,
-                device_map="auto",  
-                torch_dtype="auto",  
-                local_files_only=True
-            )
-        elif self.model_type == "microsoft/Phi-4-mini-instruct":
-            model_name = "microsoft/Phi-4-mini-instruct"
             self.tokenizer = transformers.AutoTokenizer.from_pretrained(model_name,local_files_only=True)
             self.tokenizer.padding_side = "left"
             self.model = transformers.AutoModelForCausalLM.from_pretrained(
@@ -97,6 +89,8 @@ class HFAPI(API):
             '--variation_type',
             type=str,
             default='sd_rephrase_tone',
+            # choices=["yelp_rephrase_tone", "openreview_rephrase_tone", "pubmed_rephrase_tone",
+            #          "sd_rephrase_tone",],
             help='Which image feature extractor to use')
         parser.add_argument("--mlm_probability", type=float, default=0.5)
 
@@ -161,19 +155,31 @@ class HFAPI(API):
             # generation is proportional to the label distributions
             num_seq_to_generate = round(
                 prompt_counter[prompt] * ratio_generation_training)
-            # for aug-pe generating initial synthetic seeds via gpt-2
             if self.use_subcategory:                    
-                if "pubmed" in self.variation_type and "phi4" not in self.variation_type:
-                    full_prompt_text = "Please act as a sentence generator for the medical domain. Generated sentences should mimic the style of PubMed journal articles, using a variety of sentence structures: "
+                if "yelp" in self.variation_type:
+                    category_label = prompt.split(
+                        "\t")[0].replace('Business Category: ', '')
+                    rand_keyword_idx = random.randrange(
+                        len(self.subcategory_dict['yelp'][category_label]))
+                    keyword = self.subcategory_dict['yelp'][category_label][rand_keyword_idx]
+                    full_prompt_text = f'{prompt} with keyword {keyword}'
+                    
+                elif "openreview" in self.variation_type:
+                    rand_keyword_idx = random.randrange(
+                        len(self.subcategory_dict['openreview']))
+                    keyword = self.subcategory_dict['openreview'][rand_keyword_idx]
+                    full_prompt_text = f"Suppose that you are a {keyword}. Write a paper review based on " + prompt
+
+                elif "pubmed" in self.variation_type and "phi4" not in self.variation_type:
+                    full_prompt_text = "Using a variety of sentence structures, write an abstract for a medical research paper: "
                     
                 elif "sd" in self.variation_type and "phi4" not in self.variation_type:
                     full_prompt_text = "Using a variety of sentence structures, write a passage in the tone of a person who is {poor or broke or homeless or unemployment or not being able to afford basic necessities}: "
-                # for aug-pe generating initial synthetic seeds via phi-4
                 elif "phi4" in self.variation_type:
                     if self.variation_type == "sd_phi4_rephrase_tone":
                         selected_style = ALL_SD_styles[random.randrange(
                             len(ALL_SD_styles))]
-                        system_prompt = f"Using a variety of sentence structures, write a passage {selected_style} of a person who is poor or broke or homeless or unemployment or unable to afford basic necessities: "
+                        system_prompt = f"Using a variety of sentence structures, write a passage {selected_style} of a person who is poor or broke or homeless or unemployment or not being able to afford basic necessities: "
                     else:
                         selected_style = ALL_PUBMED_styles[random.randrange(
                             len(ALL_PUBMED_styles))]
@@ -185,7 +191,9 @@ class HFAPI(API):
             else:
                 full_prompt_text = prompt
             
+            # prompt_input_ids = self.tokenizer(full_prompt_text)['input_ids']
             if isinstance(full_prompt_text, list):
+                # Use chat template for phi-4 prompts (returns a tensor)
                 formatted_prompt = self.tokenizer.apply_chat_template(
                     full_prompt_text, return_tensors="pt", padding=True, truncation=False
                 ).to(self.device)
@@ -203,12 +211,14 @@ class HFAPI(API):
                                                 max_length=self.length, batch_size=self.random_sampling_batch_size,
                                                 before_gen_length=before_gen_length)
                 all_sequences += sequences
+            #all_prefix_prompts += [full_prompt_text] * num_seq_to_generate
             all_prefix_prompts += [copy.deepcopy(full_prompt_text)] * num_seq_to_generate
 
             
             additional_info += [prompt] * num_seq_to_generate
             sync_labels_counter[prompt] = num_seq_to_generate
 
+        logging.info(f"Total generated sequences: %d", len(all_sequences))
         torch.cuda.empty_cache()
         return all_sequences,  additional_info, sync_labels_counter, all_prefix_prompts
     
@@ -250,6 +260,7 @@ class HFAPI(API):
             if self.dry_run:
                 generated_sequences = ["s" * max_length] * batch_size
             else:
+                #input_ids = torch.tensor(prompt).repeat(batch_size, 1).to(self.device)
                 input_ids = torch.as_tensor(prompt, device=self.device).repeat(batch_size, 1)
 
                 with torch.no_grad():
@@ -286,7 +297,6 @@ class HFAPI(API):
                        num_variations_per_sequence, variation_degree):
         self.model.eval()
         variations = []
-
         for i in tqdm(range(num_variations_per_sequence)):
             sub_variations, var_labels = self._text_variation(
                 sequences=sequences,
@@ -303,32 +313,118 @@ class HFAPI(API):
 
     def _rephrase(self, label, sequence, variation_type):
 
-        # for generating synthetic variant via gpt-2
-        if variation_type == "pubmed_rephrase_tone":
+        if variation_type == "yelp_rephrase_tone":
+            selected_style = ALL_styles[random.randrange(len(ALL_styles))]
+            prompt = "Based on {}, please rephrase the following sentences {}:\n{} \n".format(
+                label, selected_style, sequence)
+        elif variation_type == "openreview_rephrase_tone":
+            selected_style = ALL_OPENREVIEW_styles[random.randrange(
+                len(ALL_OPENREVIEW_styles))]
+            prompt = "Based on {}, please rephrase the following sentences {} as a paper review:\n{} \n".format(
+                label, selected_style, sequence)
+        elif variation_type == "pubmed_rephrase_tone":
             selected_style = ALL_PUBMED_styles[random.randrange(
                 len(ALL_PUBMED_styles))]
-            prompt = "Please rephrase the following sentences as an abstract for medical research paper and preserve the original meaning:\n{} \n".format(sequence)
+            prompt = "Please rephrase the following sentences as an abstract for medical research paper in clear and natural English while preserving meaning:\n{} \n".format(sequence)
         elif variation_type == "sd_rephrase_tone":
             selected_style = ALL_SD_styles[random.randrange(
                 len(ALL_SD_styles))]
             prompt = "Rephrase the following passage {}:\n{} \n".format(selected_style, sequence)
-        # for generating synthetic variant via phi-4
         elif "phi4" in self.variation_type:
-            if self.variation_type == "sd_phi4_rephrase_tone":
-                system_prompt = f"Below is an abstracted self-disclosure statement. Use it to infer the original meaning and rewrite it into a realistic self-disclosure passage:"
+            # Parse fields
+            _parts = str(label).strip().split("\t")
+            _sent = _parts[1].strip().lower() if len(_parts) >= 2 else None
+            try:
+                _tgt_words = int(_parts[2]) if len(_parts) >= 3 else None
+            except:
+                _tgt_words = None
+
+            system_prompt = (
+                "You are rewriting an abstracted self-disclosure into a realistic first-person passage. "
+                "Preserve the core facts implied by the abstracted text, avoid adding new events or details you cannot infer, "
+                "and keep the tone coherent and natural. "
+            )
+            if _sent in {"positive", "negative"}:
+                system_prompt += f"Ensure the rewritten text clearly expresses a {_sent} sentiment. "
+
+            # Firm but still soft length hint (only if we have target words)
+            if _tgt_words and _tgt_words > 0:
+                lo = max(1, int(round(0.85 * _tgt_words)))
+                hi = int(round(1.15 * _tgt_words))
+                system_prompt += (
+                    f"Write between {lo} and {hi} words (aim ~{_tgt_words}); do not be concise. "
+                    "Write 4–6 sentences covering: (a) brief context, (b) what happened, "
+                    f"(c) how I felt (matching {_sent}), (d) what I did or plan to do. "
+                    "Avoid names, identifiers, or specific places. "
+                    "Output only the passage; no meta commentary."
+                )
+                if _tgt_words >= 240:
+                    system_prompt += " If it reads more naturally, use two short paragraphs."
             else:
-                system_prompt = f"Below is an abstracted abstract of a medical research paper. Rewrite this and preserve the original meaning:"            
+                system_prompt += "Write 4–6 sentences. Output only the passage; no meta commentary."
+
             messages = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": sequence}
             ]
             return messages
+
+
+        '''
+        elif "phi4" in self.variation_type:
+            # Parse label fields: expected "sd\t<sentiment>\t<target_words>"
+            # Backward-compatible: if fields are missing, we just skip length hint.
+            _parts = str(label).strip().split("\t")
+            _tag = _parts[0].lower() if len(_parts) >= 1 else ""
+            _sent = _parts[1].strip().lower() if len(_parts) >= 2 else None
+            try:
+                _tgt_words = int(_parts[2]) if len(_parts) >= 3 else None
+            except:
+                _tgt_words = None
+
+            # Build the system prompt with sentiment + OPTIONAL length hint
+            if self.variation_type == "sd_phi4_rephrase_tone":
+                system_prompt = (
+                    "You are rewriting an abstracted self-disclosure into a realistic first-person passage. "
+                    "Preserve the core facts implied by the abstracted text, avoid adding new events, and keep the tone coherent. "
+                )
+                if _sent in {"positive", "negative"}:
+                    system_prompt += f"Ensure the rewritten text clearly expresses a {_sent} sentiment. "
+                # Soft length hint if available
+                if _tgt_words and _tgt_words > 0:
+                    # ±15% window without being too rigid
+                    lo = max(1, int(round(0.85 * _tgt_words)))
+                    hi = int(round(1.15 * _tgt_words))
+                    system_prompt += (
+                        f"Aim for about {_tgt_words} words (acceptable range {lo}–{hi}). "
+                        "Do not add meta commentary or instructions; write only the passage."
+                    )
+                else:
+                    system_prompt += "Write only the passage; no meta commentary."
+            else:
+                # e.g., pubmed variants
+                system_prompt = (
+                    "Rewrite the abstracted research summary into a clear, neutral abstract. "
+                    "Preserve meaning, avoid vivid metaphors or emotional language."
+                )
+                if _tgt_words and _tgt_words > 0:
+                    lo = max(1, int(round(0.85 * _tgt_words)))
+                    hi = int(round(1.15 * _tgt_words))``
+                    system_prompt += f" Aim for ~{_tgt_words} words (range {lo}–{hi})."
+
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": sequence}
+            ]
+            return messages
+            '''
         return prompt
     
 
     def generate_long_text(self, input_ids, step_size=200):
+        """Generate long synthetic text in smaller steps to avoid CUDA OOM issues."""
         generated_text = []
-        
+    
         with torch.no_grad():
             for _ in range(self.length // step_size):
                 output = self.model.generate(
@@ -350,7 +446,11 @@ class HFAPI(API):
         return " ".join(generated_text)
 
     def extract_first_assistant_response(self,text):
-
+        """
+        Extracts only the first 'assistant' response and removes system/user content.
+        Captures everything after the first 'assistant' and stops at the next 'system'.
+        """
+        # Match text starting after first "assistant" and ending at the next "system"
         match = re.search(r"assistant\s*([\s\S]+?)(?=\bsystem\b|\bsystem\B|$)", text, re.IGNORECASE)
         if match:
             response = match.group(1).strip()
@@ -360,7 +460,7 @@ class HFAPI(API):
 
 
     def _text_variation(self, sequences, labels, variation_degree, variation_type, batch_size):
-        
+        """Handles batch-wise text variation generation with chunked sequence output."""
         device = self.device
         num_seq = len(sequences)
         all_data, all_labels = [], []
@@ -375,10 +475,9 @@ class HFAPI(API):
             for idx in range(start_idx, end_idx):
                 messages = self._rephrase(labels[idx], sequences[idx], variation_type)
 
-                # **Ensure `messages` is valid**
                 if messages is None or not isinstance(messages, list):
                     logging.error(f"Invalid messages structure at index {idx}: {messages}")
-                    continue  # Skip invalid input
+                    continue
 
                 batch_messages.append(messages)
                 batch_labels.append(labels[idx])
@@ -386,31 +485,160 @@ class HFAPI(API):
             with torch.no_grad():
                 if not batch_messages:
                     logging.warning("Skipping batch because batch_messages is empty.")
-                    continue  # Skip empty batch
+                    continue
 
-                batch_inputs = self.tokenizer.apply_chat_template(
-                    batch_messages, return_tensors="pt", padding=True, truncation=False
-                ).to(device)
+                for idx in range(len(batch_messages)):
+                    target = str(batch_labels[idx]).strip().upper()
+                    generated_text, _pred = self.generate_with_sentiment_guard(
+                        messages=batch_messages[idx],
+                        target_label=target,
+                        max_attempts=4,      
+                        threshold=None       
+                    )
+                    cleaned_response = generated_text if generated_text else None
 
-                for idx, single_input_ids in enumerate(batch_inputs):
- 
-                    single_input_ids = single_input_ids.unsqueeze(0)
-                    generated_text = self.generate_long_text(single_input_ids, step_size=200)
-
-                    cleaned_response = self.extract_first_assistant_response(generated_text)
-
-                    lab = batch_labels[idx].strip().split("\t")
+                    lab = str(batch_labels[idx]).strip().split("\t")
                     if cleaned_response:
                         all_data.append(cleaned_response)
                     else:
-                        all_data.append(batch_messages[idx][-1]['content'])  # Fallback if extraction fails
+                        all_data.append(batch_messages[idx][-1]['content'])  # fallback
 
-                    all_labels.append(lab)
+                    all_labels.append(lab)  # keep your original behavior
+
 
             torch.cuda.empty_cache()
 
         logging.info(f"_text_variation output length: {len(all_data)}")
         return all_data, all_labels
+
+    
+    from collections import Counter
+    import pandas as pd
+
+    def _ensure_sentiment_clf(self):
+        """Create the HF pipeline once and cache on self."""
+        if not hasattr(self, "sentiment_clf") or self.sentiment_clf is None:
+            from transformers import pipeline
+            device = 0 if torch.cuda.is_available() else -1
+            self.sentiment_clf = pipeline(
+                "sentiment-analysis",
+                model="siebert/sentiment-roberta-large-english",
+                device=device
+            )
+
+    def _normalize_sentiment_label(self, raw_label):
+        up = str(raw_label).strip().upper()
+        if up.startswith("LABEL_"):
+            idx = up.split("_")[-1]
+            id2label = getattr(self.sentiment_clf.model.config, "id2label", {}) or {}
+            mapped = None
+            if idx in id2label:
+                mapped = id2label[idx]
+            else:
+                try:
+                    mapped = id2label[int(idx)]
+                except Exception:
+                    mapped = None
+            if mapped:
+                return str(mapped).strip().upper()
+            fallback = {"LABEL_0": "NEGATIVE", "LABEL_1": "POSITIVE", "LABEL_2": "NEUTRAL"}
+            return fallback.get(up, up)
+        return up
+
+    def _classify_chunked_with_conf(self, text, max_chars=512, stride=400):
+        """
+        Classify long text via overlapping chunks.
+        Returns (label_uppercased, avg_conf_of_that_label).
+        """
+        from collections import Counter
+        import pandas as pd
+
+        if text is None or (isinstance(text, float) and pd.isna(text)): 
+            return "ERROR", 0.0
+        t = str(text).strip()
+        if not t:
+            return "ERROR", 0.0
+
+        chunks, i = [], 0
+        while i < len(t):
+            chunk = t[i:i+max_chars]
+            if not chunk: break
+            chunks.append(chunk)
+            if i + max_chars >= len(t): break
+            i += stride
+
+        try:
+            results = self.sentiment_clf(chunks)  # [{'label':..., 'score':...}]
+        except Exception:
+            return "ERROR", 0.0
+
+        # normalize labels & collect scores
+        by_label = {}
+        for r in results:
+            try:
+                lab = self._normalize_sentiment_label(r["label"])
+                sc  = float(r.get("score", 0.0))
+                if lab != "ERROR":
+                    by_label.setdefault(lab, []).append(sc)
+            except Exception:
+                pass
+
+        if not by_label:
+            return "ERROR", 0.0
+
+        # majority by count; tie-break by higher mean confidence
+        def key_fn(item):
+            lab, scores = item
+            return (len(scores), sum(scores)/len(scores))
+
+        best_lab, best_scores = max(by_label.items(), key=key_fn)
+        avg_conf = sum(best_scores) / len(best_scores)
+        return best_lab, avg_conf
+
+
+    def generate_with_sentiment_guard(self, messages, target_label, max_attempts=4, threshold=None):
+        """
+        Try up to `max_attempts` to generate text whose sentiment matches `target_label`.
+        - If at least one attempt matches, return the matching candidate with highest confidence.
+        - If none match, return the overall highest-confidence candidate (never empty).
+        - `threshold` (e.g., 0.60) is optional; if set, we early-return when a match also clears it.
+        """
+        self._ensure_sentiment_clf()
+        target = str(target_label).strip().upper()
+
+        best_match_text, best_match_conf = None, -1.0
+        best_any_text, best_any_conf, best_any_pred = "", -1.0, "ERROR"
+
+        for _ in range(max_attempts):
+            # 1) pack chat -> ids
+            input_ids = self.tokenizer.apply_chat_template(
+                [messages], return_tensors="pt", padding=True, truncation=False
+            ).to(self.device)[0].unsqueeze(0)
+
+            # 2) generate with your function (ensure it returns a string)
+            gen = self.generate_long_text(input_ids, step_size=200)
+            text = getattr(self, "extract_first_assistant_response", lambda x: x)(gen) or ""
+
+            # 3) classify with confidence
+            pred, conf = self._classify_chunked_with_conf(text)  # <- see helper just below
+
+            # track overall best (for fallback)
+            if conf > best_any_conf:
+                best_any_text, best_any_conf, best_any_pred = text, conf, pred
+
+            # check for target match
+            if pred == target:
+                if conf > best_match_conf:
+                    best_match_text, best_match_conf = text, conf
+                # optional early exit on strong match
+                if threshold is not None and conf >= float(threshold):
+                    return best_match_text, pred
+
+        # return best match if any, else best overall (never empty)
+        if best_match_text is not None:
+            return best_match_text, target
+        return best_any_text, best_any_pred
+
 
 
 

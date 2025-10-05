@@ -9,27 +9,80 @@ import copy
 import openai
 import re
 import collections
+#from .utils import set_seed, get_subcategories, ALL_styles, ALL_OPENREVIEW_styles, ALL_PUBMED_styles, PROMPTS_templates, PUBMED_INIT_templates
 from .utils import *
 from .openai_chat import openai_completions
 from .deepseek_chat import deepseek_completions
 import time
 from dpsda.refinement import *
 
+
+
+
+## doc
+
+# MODEL_CONFIG = {
+#     'gpt-4o-mini': 
+#     {"openai_api_key":  "33qduXp7lL3dZkkmA3y6RTs0yAPAJfzrrRPuFBMxDjaqZX1BqzZGJQQJ99BBACHYHv6XJ3w3AAAAACOGll8I",
+#     "openai_api_base": "https://docma-m79lfd36-eastus2.openai.azure.com/",
+#      "engine": 'gpt-4o-mini',
+#                       },
+# }
+
+# MODEL_CONFIG = {
+#     'gpt-35-turbo': 
+#     {"openai_api_key":  "33qduXp7lL3dZkkmA3y6RTs0yAPAJfzrrRPuFBMxDjaqZX1BqzZGJQQJ99BBACHYHv6XJ3w3AAAAACOGll8I",
+#     "openai_api_base": "https://docma-m79lfd36-eastus2.openai.azure.com/",
+#      "engine": 'gpt-35-turbo',
+#                       },
+# }
+
+# deepseek-r1
+# DeepSeek_CONFIG = {
+#     'DeepSeek-R1': 
+#     {"openai_api_key":  "3hAeLM8kFzw4FPqk6gqYFFZsF6NmKDY8mTK8C4SZVyEeA6Ua8pRxJQQJ99BBACHYHv6XJ3w3AAAAACOGlOgj111",
+#     "openai_api_base": "https://docma9859262271.services.ai.azure.com111",
+#      "engine": 'DeepSeek-R1',
+#                       },
+# }
+
+#======================================================
+
+## qfm
 MODEL_CONFIG = {
     'gpt-4o-mini': 
-    {"openai_api_key":  "", # your azure openai key
-    "openai_api_base": "",
+    {"openai_api_key":  "CjG0AxPH23nyAEpmPzQEC4BiPkTTz9zHzIsKHg7m2fcQYXUBf8VYJQQJ99AJAC5RqLJXJ3w3AAABACOGgxpo",
+    "openai_api_base": "https://qfm50-m2vzxvan-westeurope.openai.azure.com/",
      "engine": 'gpt-4o-mini',
                       },
 }
 
-DeepSeek_CONFIG = {
-    'DeepSeek-R1': 
-    {"openai_api_key":  "", # your azure key
-    "openai_api_base": "",
-     "engine": 'DeepSeek-R1',
-                      },
-}
+# MODEL_CONFIG = {
+#     'gpt-35-turbo': {"openai_api_key":  "CjG0AxPH23nyAEpmPzQEC4BiPkTTz9zHzIsKHg7m2fcQYXUBf8VYJQQJ99AJAC5RqLJXJ3w3AAABACOGgxpo",
+#                       "openai_api_base": "https://qfm50-m2vzxvan-westeurope.openai.azure.com/",
+#                       "engine": 'gpt-35-turbo',
+#                       },
+# }
+
+# MODEL_CONFIG = {
+#     'gpt-4': 
+#     {"openai_api_key":  "CjG0AxPH23nyAEpmPzQEC4BiPkTTz9zHzIsKHg7m2fcQYXUBf8VYJQQJ99AJAC5RqLJXJ3w3AAABACOGgxpo",
+#     "openai_api_base": "https://qfm50-m2vzxvan-westeurope.openai.azure.com/",
+#      "engine": 'gpt-4-2',
+#                       },
+# }
+
+#======================================================
+
+## zh
+# MODEL_CONFIG = {
+#     'gpt-4o-mini': 
+#     {"openai_api_key":  "AKDWGUzv2LqbH3mZf39UZNXian8VWMQARzTKbUBguyEoMCiXLfesJQQJ99BCACHYHv6XJ3w3AAAAACOGjfAh",
+#     "openai_api_base": "https://zhang0243374003.openai.azure.com/",
+#      "engine": 'gpt-4o-mini',
+#                       },
+# }
+
 
 # for gpt-4
 #MAX_REQUESTS_PER_MINUTE = 42
@@ -89,7 +142,7 @@ class AzureAPI(API):
             self.engine = MODEL_CONFIG[self.model_type]['engine']
             openai.api_type = 'azure'  # here we use azure openai service
             #openai.api_version = '2024-08-01-preview' # for gpt-3.5
-            openai.api_version = '2024-05-01-preview'
+            openai.api_version = '2025-01-01-preview'
 
         openai.api_key = self.openai_api_key
         openai.api_base = self.openai_api_base
@@ -135,11 +188,14 @@ class AzureAPI(API):
         set_seed(seed=seed, n_gpu=self.n_gpu)
 
         self.sleep_time = sleep_time
+        #if 'blank_fill' in self.variation_type:
         if 'sd' in self.variation_type or 'pubmed' in self.variation_type:
             from transformers import BertTokenizer
+            #print("@@@@@@@@ self.variation_type: ", self.variation_type)
             self.mask_tokenizer = BertTokenizer.from_pretrained(
                 "bert-base-cased",  mask_token="_")
-            self.encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")      
+            self.encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+        
         self.r_data = r_data
 
     @staticmethod
@@ -149,6 +205,7 @@ class AzureAPI(API):
             '--model_type',
             type=str,
             default='gpt-4o-mini',
+            #default='gpt-35-turbo',
             help='Which model to use')
 
         parser.add_argument("--use_subcategory",
@@ -158,7 +215,11 @@ class AzureAPI(API):
             '--variation_type',
             type=str,
             default='pubmed_rephrase_tone',
-            choices=["sd_rephrase_tone",
+            choices=["yelp_blank_fill_3_shot_word",
+                     "openreview_blank_fill_1_shot_word",
+                     "pubmed_blank_fill_0_shot_word",
+                     "sd_blank_fill_0_shot_word",
+                     "sd_rephrase_tone",
                      "pubmed_rephrase_tone",
                      ],
             help='Which image feature extractor to use')
@@ -196,18 +257,22 @@ class AzureAPI(API):
         global tokens_used, requests_made, start_time
         elapsed_time = time.time() - start_time
 
+        # Reset count every minute
         if elapsed_time > 60:
             tokens_used = 0
             requests_made = 0
             start_time = time.time()
 
+        # Check if we exceed token or request limits
         if tokens_used + tokens > MAX_TOKENS_PER_MINUTE or requests_made >= MAX_REQUESTS_PER_MINUTE:
             sleep_time = 60 - elapsed_time  # Wait the remaining time in the minute
+            #print(f"Rate limit reached, sleeping for {sleep_time:.2f} seconds...")
             time.sleep(sleep_time)
             tokens_used = 0
             requests_made = 0
             start_time = time.time()
 
+        # Update counters
         tokens_used += tokens
         requests_made += 1
     
@@ -222,7 +287,7 @@ class AzureAPI(API):
         all_prefix_prompts = []
         for prompt_text in tqdm(prompt_counter):
             prompt = prompt_text
-
+            # generation is proportional to the label distributions
             num_seq_to_generate = round(
                 prompt_counter[prompt_text] * ratio_generation_training)
             if num_seq_to_generate > 0:
@@ -230,12 +295,14 @@ class AzureAPI(API):
                     self.length]*num_seq_to_generate if lens_dict is None else lens_dict[prompt_text]
                 sequences, prefix_prompts = self._generate_text(prompt, num_seq_to_generate, message_constructor,
                                                                 max_length=max_lens_ls)
+                logging.info(f"{prompt_text},  {len(sequences)}")
 
                 syn_samples += sequences
                 all_prefix_prompts += prefix_prompts
 
+                #additional_info += [prompt_text] * num_seq_to_generate
                 additional_info += [prompt_text] * len(sequences)
-
+                #sync_labels_counter[prompt_text] = num_seq_to_generate
                 sync_labels_counter[prompt_text] = len(sequences)
 
         return syn_samples, additional_info, sync_labels_counter, all_prefix_prompts
@@ -247,7 +314,20 @@ class AzureAPI(API):
 
         for i in tqdm(range(seq_num)):
             if self.use_subcategory:
-                if "pubmed" in self.variation_type:
+                if "yelp" in self.variation_type:
+                    category_label = prompt.split(
+                        "\t")[0].replace('Business Category: ', '')
+                    rand_keyword_idx = random.randrange(
+                        len(self.subcategory_dict['yelp'][category_label]))
+                    keyword = self.subcategory_dict['yelp'][category_label][rand_keyword_idx]
+                    prefix = f'{prompt} with keyword {keyword}'
+                elif "openreview" in self.variation_type:
+                    rand_keyword_idx = random.randrange(
+                        len(self.subcategory_dict['openreview']))
+                    keyword = self.subcategory_dict['openreview'][rand_keyword_idx]
+                    
+                    prefix = f"Suppose that you are a {keyword}, and your answer should contain 1000 words.\n" + prompt
+                elif "pubmed" in self.variation_type:
                     prefix = PUBMED_INIT_templates[random.randrange(
                         len(PUBMED_INIT_templates))]  # random select one template
                     rand_keyword_idx = random.randrange(
@@ -271,9 +351,11 @@ class AzureAPI(API):
         if self.dry_run:
             generations = [prompt[0][1]["content"] for prompt in all_prompts]
         else:
+            #self.enforce_rate_limit(10)
             generations = openai_completions(all_prompts, model_name=self.model_type, engine_name=self.engine, openai_api_keys=[self.openai_api_key], openai_api_base=self.openai_api_base,
                                              num_procs=self.num_procs,  top_p=self.p, temperature=self.temperature)['completions']
 
+        logging.info(f"len generations:  {len(generations)}")
         for idx in range(len(generations)):
             seq = generations[idx]
             seq = " ".join(seq.split())
@@ -281,6 +363,10 @@ class AzureAPI(API):
             if seq:
                 all_data.append(seq)
 
+        logging.info(f"len all_data:  {len(all_data)}")
+        logging.info(f"seq_num:  {seq_num}")
+        # if len(all_data) > seq_num:
+        #     all_data = random.sample(all_data, seq_num)
         return all_data, all_prefix_prompts
 
     def text_variation(self, sequences, additional_info,
@@ -320,16 +406,66 @@ class AzureAPI(API):
         target_word = max(target_word, self.min_target_word)
 
         masked_seq = self._create_masked_seq(sequence, self.mlm_probability)
-        if "pubmed_rephrase_tone" in variation_type:
+        if "pubmed_blank_fill_0_shot_word" in variation_type:
             selected_style = ALL_PUBMED_styles[random.randrange(
                 len(ALL_PUBMED_styles))]
+            instruction = f"You are required to fill in the blanks with more details for the input medical abstract {selected_style}. If there is no blanks, please output the original medical abstract.\n"
+            prompt = instruction + \
+                f"Please fill in the blanks in the following sentences to write an abstract of a medical research paper: \"{masked_seq}\" \n"
+
+        elif "pubmed_rephrase_tone" in variation_type:
+            selected_style = ALL_PUBMED_styles[random.randrange(
+                len(ALL_PUBMED_styles))]
+            #prompt = f"Use different words to rephrase the following sentences {selected_style}:\n{sequence} \n"
             prompt = f"Rephrase the following sentences as an abstract for medical research paper :\"{sequence}\" \n"
 
         elif "sd_rephrase_tone" in variation_type:
             selected_style = ALL_SD_styles[random.randrange(
                 len(ALL_SD_styles))]
-            prompt = f"Rephrase the following self-disclosure passage {selected_style}: \"{sequence}\"\n"
+            prompt = f"Use different words to rephrase the following sentences {selected_style}: \"{sequence}\"\n"
+                
+        elif "sd_blank_fill_0_shot_word" in variation_type:
+            selected_style = ALL_SD_styles[random.randrange(
+                len(ALL_SD_styles))]
+            prompt = f"You are required to fill in the blanks with more details {selected_style} for the input passage. If there is no blanks, please output the original passage: \"{masked_seq}\"\n"
+            #prompt = instruction + \
+                # f"Please fill in the blanks in the following sentences to write a passage of approximately 200 words in the tone of a person who is struggling with poverty: \"{masked_seq}\". Only use letters, digits, and standard punctuation marks like commas and periods. **End the passage with a single period, with no additional symbols or characters after it.**\n"
+            # prompt = "Please write a passage of approximately 200 words {} to describe a person who is struggling with poverty:\n{} \n".format(selected_style, masked_seq)
+                
         
+        elif "openreview_blank_fill_1_shot_word" in variation_type:
+            selected_style = ALL_OPENREVIEW_styles[random.randrange(
+                len(ALL_OPENREVIEW_styles))]
+            instruction = f"Based on the area and final decision of a research paper, you are required to fill in the blanks for the input sentences **{selected_style}**. If there is no blanks, please output the original input sentences.\n"
+
+            demos = [
+                {'label': 'Area: Applications (eg, speech processing, computer vision, NLP)\tRecommendation: 3: reject, not good enough',
+                 'input_word': 'This paper proposes an attention generation _ for ROI detection by adversarial counterfactual without attention label. The attention map can _ used _ highlight useful information for disease classification and detection. _ experiments show its _ on different medical imaging tasks. Strengths: --The idea using _ images for _ map _ is interesting. --The _ _ medical imaging taks is significant. Weaknesses: --The novelty is _ and _ --More _ are needed, such as _ counterfactual generation. _ proposed method is interesting, but the novelty is limited',
+                 'input': '__ proposes an__ method_ ROI detection__arial_f_ without attention_. The_ map can_ used____ for__ and____ show_ improvements on different medical__._Strength__ \n--The idea using__actual images_ sali__ generation_ interesting.\n\n_The improvement____aks is significant. \n\nWeak____The___ and_____ experiments are needed_ such as__f___the_ method_ interesting_ but_ novelty_ limited',
+                 'output': 'This paper proposes an attention generation method for ROI detection by adversarial counterfactual without attention label. The attention map can be used to highlight useful information for disease classification and detection. The experiments show its improvements on different medical imaging tasks.  \nStrengths: \n--The idea using counterfactual images for saliency map generation is interesting.\n\n--The improvement for medical imaging taks is significant. \n\nWeaknesses:\n\n--The novelty is simple and limited. \n\n--More experiments are needed, such as existing counterfactual generation.\nthe proposed method is interesting, but the novelty is limited',
+                 'count': 85},
+                {'label': label, 'input': masked_seq,
+                 'output': '', 'count': target_word}
+            ]
+
+            prompt = instruction
+            template_demo = "{label}.\nInput: {input}\nFill-in-Blanks and your answer MUST be exactly {count} words: {output}\n"
+            template_request = "{label}.\nInput: {input}\nFill-in-Blanks and your answer MUST be exactly {count} words:"
+            prompt += "\n\n".join(template_demo.format(**a)
+                                  for i, a in enumerate(demos[0:1]))
+            prompt += "\n\n" + template_request.format(**demos[-1])
+
+        elif "yelp_blank_fill_3_shot_word" in variation_type:
+            lens_prompt = "and your answer MUST be exactly"
+            lens_control = lens_prompt + f" {target_word} words"
+            selected_style = ALL_styles[random.randrange(len(ALL_styles))]
+            instruction = f"Based on the Business Category and Review Stars, you are required to fill in the blanks in the Input sentences {selected_style}. If there are no blanks, you are required to output the original Input sentences.\n"
+            demo_1 = f"Business Category: Restaurants\tReview Stars: 2.0\nInput: _ that great , terrible _ rolls and fish _ smelling _ _.\nFill-in-Blanks {lens_prompt} 10 words: Not that great, terrible egg rolls and fishy smelling shrimp.\n"
+            demo_2 = f"Business Category: Beauty & Spas\tReview Stars: 5.0\nInput: Very clean! Staff are super friendly!!\nFill-in-Blanks {lens_prompt} 6 words: Very clean! Staff are super friendly!!\n"
+            demo_3 = f"Business Category: Shopping\tReview Stars: 3.0\nInput: I _ in _ and stopped in for a _. I was _ surprised. Good _, nice price.\nFill-in-Blanks {lens_prompt} 19 words: I was in a rush and stopped in for a mani-pedi. I was pleasantly surprised. Good service, nice price.\n"
+            prompt = instruction + demo_1 + demo_2 + demo_3 + \
+                f"{label} \nInput: {masked_seq} \nFill-in-Blanks {lens_control}:"
+
         return prompt, target_word
 
     def _text_variation_parallel(self, sequences, labels, variation_degree, variation_type, lookahead=1):
@@ -340,12 +476,17 @@ class AzureAPI(API):
         all_target_words = []
         all_gen_words = []
 
+        # if self.r_data == 1:
+        #     message_constructor = MessageConstructor(
+        #         PROMPTS_templates["private_pubmed"]['sys_prompt'], PROMPTS_templates[self.var_template]['task_desc'])
+        # else:
         message_constructor = MessageConstructor(
             PROMPTS_templates[self.var_template]['sys_prompt'], PROMPTS_templates[self.var_template]['task_desc'])
 
         self.mlm_probability = variation_degree
         all_prompts = []
         all_masked_prompts = []
+        allowed_characters = re.compile(r"[^A-Za-z0-9,.!?'\";:()\-\— ]|\([^)]*\)")
 
         for idx in tqdm(range(num_seq)):
             for _ in range(lookahead):
@@ -374,13 +515,18 @@ class AzureAPI(API):
             generations = openai_completions(all_prompts, model_name=self.model_type, engine_name=self.engine, openai_api_keys=[self.openai_api_key], openai_api_base=self.openai_api_base,
                                              num_procs=self.num_procs,  top_p=0.95, temperature=self.temperature, sleep_time=self.sleep_time)['completions']
 
+        # **Added cleaning function **
+        #generations = batch_clean_texts(generations, use_threads=True, num_workers=8)
+
         gen_idx = -1
         for idx in tqdm(range(num_seq)):
             for j in range(lookahead):
                 gen_idx += 1
                 try:
                     seq = generations[gen_idx]
-
+                    #=======================
+                    #seq = allowed_characters.sub("", seq)  # Apply regex to remove unwanted 
+                    #=======================
                     seq = " ".join(seq.split())
                     if seq:
                         all_data[j].append(seq)
@@ -397,6 +543,7 @@ class AzureAPI(API):
             all_labels.append(labels[idx])
 
         all_lens = [len(one_data) for one_data in all_data]
+        logging.info(f" _text_variation output lens  {all_lens}")
 
         return all_data, all_labels,   all_target_words, all_gen_words, all_masked_prompts
     
@@ -490,7 +637,11 @@ class AzureDeepSeek(API):
             '--variation_type',
             type=str,
             default='pubmed_rephrase_tone',
-            choices=["sd_rephrase_tone",
+            choices=["yelp_blank_fill_3_shot_word",
+                     "openreview_blank_fill_1_shot_word",
+                     "pubmed_blank_fill_0_shot_word",
+                     "sd_blank_fill_0_shot_word",
+                     "sd_rephrase_tone",
                      "pubmed_rephrase_tone",
                      ],
             help='Which image feature extractor to use')
@@ -528,13 +679,16 @@ class AzureDeepSeek(API):
         global tokens_used, requests_made, start_time
         elapsed_time = time.time() - start_time
 
+        # Reset count every minute
         if elapsed_time > 60:
             tokens_used = 0
             requests_made = 0
             start_time = time.time()
 
+        # Check if we exceed token or request limits
         if tokens_used + tokens > MAX_TOKENS_PER_MINUTE or requests_made >= MAX_REQUESTS_PER_MINUTE:
             sleep_time = 60 - elapsed_time  # Wait the remaining time in the minute
+            #print(f"Rate limit reached, sleeping for {sleep_time:.2f} seconds...")
             time.sleep(sleep_time)
             tokens_used = 0
             requests_made = 0
@@ -563,11 +717,14 @@ class AzureDeepSeek(API):
                     self.length]*num_seq_to_generate if lens_dict is None else lens_dict[prompt_text]
                 sequences, prefix_prompts = self._generate_text(prompt, num_seq_to_generate, message_constructor,
                                                                 max_length=max_lens_ls)
+                logging.info(f"{prompt_text},  {len(sequences)}")
 
                 syn_samples += sequences
                 all_prefix_prompts += prefix_prompts
 
+                #additional_info += [prompt_text] * num_seq_to_generate
                 additional_info += [prompt_text] * len(sequences)
+                #sync_labels_counter[prompt_text] = num_seq_to_generate
                 sync_labels_counter[prompt_text] = len(sequences)
 
         return syn_samples, additional_info, sync_labels_counter, all_prefix_prompts
@@ -579,7 +736,20 @@ class AzureDeepSeek(API):
 
         for i in tqdm(range(seq_num)):
             if self.use_subcategory:
-                if "pubmed" in self.variation_type:
+                if "yelp" in self.variation_type:
+                    category_label = prompt.split(
+                        "\t")[0].replace('Business Category: ', '')
+                    rand_keyword_idx = random.randrange(
+                        len(self.subcategory_dict['yelp'][category_label]))
+                    keyword = self.subcategory_dict['yelp'][category_label][rand_keyword_idx]
+                    prefix = f'{prompt} with keyword {keyword}'
+                elif "openreview" in self.variation_type:
+                    rand_keyword_idx = random.randrange(
+                        len(self.subcategory_dict['openreview']))
+                    keyword = self.subcategory_dict['openreview'][rand_keyword_idx]
+                    
+                    prefix = f"Suppose that you are a {keyword}, and your answer should contain 1000 words.\n" + prompt
+                elif "pubmed" in self.variation_type:
                     prefix = PUBMED_INIT_templates[random.randrange(
                         len(PUBMED_INIT_templates))]  # random select one template
                     rand_keyword_idx = random.randrange(
@@ -617,6 +787,8 @@ class AzureDeepSeek(API):
 
         logging.info(f"len all_data:  {len(all_data)}")
         logging.info(f"seq_num:  {seq_num}")
+        # if len(all_data) > seq_num:
+        #     all_data = random.sample(all_data, seq_num)
         return all_data, all_prefix_prompts
 
     def text_variation(self, sequences, additional_info,
@@ -655,16 +827,67 @@ class AzureDeepSeek(API):
             " ")) + int(np.random.normal(0, self.mlm_probability*self.word_var_scale, 1)[0])
         target_word = max(target_word, self.min_target_word)
 
-        if "pubmed_rephrase_tone" in variation_type:
+        masked_seq = self._create_masked_seq(sequence, self.mlm_probability)
+        if "pubmed_blank_fill_0_shot_word" in variation_type:
+            selected_style = ALL_PUBMED_styles[random.randrange(
+                len(ALL_PUBMED_styles))]
+            instruction = f"You are required to fill in the blanks with more details for the input medical abstract {selected_style}. If there is no blanks, please output the original medical abstract.\n"
+            prompt = instruction + \
+                f"Please fill in the blanks in the following sentences to write an abstract of a medical research paper: \"{masked_seq}\" \n"
+
+        elif "pubmed_rephrase_tone" in variation_type:
             selected_style = ALL_PUBMED_styles[random.randrange(
                 len(ALL_PUBMED_styles))]
             prompt = f"Use different words to rephrase the following sentences {selected_style}:\n{sequence} \n"
+            #prompt = f"Rephrase the following sentences as an abstract for medical research paper in clear and natural English:\"{sequence}\" \n"
 
         elif "sd_rephrase_tone" in variation_type:
             selected_style = ALL_SD_styles[random.randrange(
                 len(ALL_SD_styles))]
+            #prompt = f"Use different words to rephrase the following sentences {selected_style}: \"{sequence}\"\n"
             prompt = f"Rrephrase the following sentences: \"{sequence}\"\n"
                 
+        elif "sd_blank_fill_0_shot_word" in variation_type:
+            selected_style = ALL_SD_styles[random.randrange(
+                len(ALL_SD_styles))]
+            prompt = f"You are required to fill in the blanks with more details {selected_style} for the input passage. If there is no blanks, please output the original passage: \"{masked_seq}\"\n"
+            #prompt = instruction + \
+                # f"Please fill in the blanks in the following sentences to write a passage of approximately 200 words in the tone of a person who is struggling with poverty: \"{masked_seq}\". Only use letters, digits, and standard punctuation marks like commas and periods. **End the passage with a single period, with no additional symbols or characters after it.**\n"
+            # prompt = "Please write a passage of approximately 200 words {} to describe a person who is struggling with poverty:\n{} \n".format(selected_style, masked_seq)
+                
+        
+        elif "openreview_blank_fill_1_shot_word" in variation_type:
+            selected_style = ALL_OPENREVIEW_styles[random.randrange(
+                len(ALL_OPENREVIEW_styles))]
+            instruction = f"Based on the area and final decision of a research paper, you are required to fill in the blanks for the input sentences **{selected_style}**. If there is no blanks, please output the original input sentences.\n"
+
+            demos = [
+                {'label': 'Area: Applications (eg, speech processing, computer vision, NLP)\tRecommendation: 3: reject, not good enough',
+                 'input_word': 'This paper proposes an attention generation _ for ROI detection by adversarial counterfactual without attention label. The attention map can _ used _ highlight useful information for disease classification and detection. _ experiments show its _ on different medical imaging tasks. Strengths: --The idea using _ images for _ map _ is interesting. --The _ _ medical imaging taks is significant. Weaknesses: --The novelty is _ and _ --More _ are needed, such as _ counterfactual generation. _ proposed method is interesting, but the novelty is limited',
+                 'input': '__ proposes an__ method_ ROI detection__arial_f_ without attention_. The_ map can_ used____ for__ and____ show_ improvements on different medical__._Strength__ \n--The idea using__actual images_ sali__ generation_ interesting.\n\n_The improvement____aks is significant. \n\nWeak____The___ and_____ experiments are needed_ such as__f___the_ method_ interesting_ but_ novelty_ limited',
+                 'output': 'This paper proposes an attention generation method for ROI detection by adversarial counterfactual without attention label. The attention map can be used to highlight useful information for disease classification and detection. The experiments show its improvements on different medical imaging tasks.  \nStrengths: \n--The idea using counterfactual images for saliency map generation is interesting.\n\n--The improvement for medical imaging taks is significant. \n\nWeaknesses:\n\n--The novelty is simple and limited. \n\n--More experiments are needed, such as existing counterfactual generation.\nthe proposed method is interesting, but the novelty is limited',
+                 'count': 85},
+                {'label': label, 'input': masked_seq,
+                 'output': '', 'count': target_word}
+            ]
+
+            prompt = instruction
+            template_demo = "{label}.\nInput: {input}\nFill-in-Blanks and your answer MUST be exactly {count} words: {output}\n"
+            template_request = "{label}.\nInput: {input}\nFill-in-Blanks and your answer MUST be exactly {count} words:"
+            prompt += "\n\n".join(template_demo.format(**a)
+                                  for i, a in enumerate(demos[0:1]))
+            prompt += "\n\n" + template_request.format(**demos[-1])
+
+        elif "yelp_blank_fill_3_shot_word" in variation_type:
+            lens_prompt = "and your answer MUST be exactly"
+            lens_control = lens_prompt + f" {target_word} words"
+            selected_style = ALL_styles[random.randrange(len(ALL_styles))]
+            instruction = f"Based on the Business Category and Review Stars, you are required to fill in the blanks in the Input sentences {selected_style}. If there are no blanks, you are required to output the original Input sentences.\n"
+            demo_1 = f"Business Category: Restaurants\tReview Stars: 2.0\nInput: _ that great , terrible _ rolls and fish _ smelling _ _.\nFill-in-Blanks {lens_prompt} 10 words: Not that great, terrible egg rolls and fishy smelling shrimp.\n"
+            demo_2 = f"Business Category: Beauty & Spas\tReview Stars: 5.0\nInput: Very clean! Staff are super friendly!!\nFill-in-Blanks {lens_prompt} 6 words: Very clean! Staff are super friendly!!\n"
+            demo_3 = f"Business Category: Shopping\tReview Stars: 3.0\nInput: I _ in _ and stopped in for a _. I was _ surprised. Good _, nice price.\nFill-in-Blanks {lens_prompt} 19 words: I was in a rush and stopped in for a mani-pedi. I was pleasantly surprised. Good service, nice price.\n"
+            prompt = instruction + demo_1 + demo_2 + demo_3 + \
+                f"{label} \nInput: {masked_seq} \nFill-in-Blanks {lens_control}:"
 
         return prompt, target_word
 
@@ -682,6 +905,7 @@ class AzureDeepSeek(API):
         self.mlm_probability = variation_degree
         all_prompts = []
         all_masked_prompts = []
+        allowed_characters = re.compile(r"[^A-Za-z0-9,.!?'\";:()\-\— ]|\([^)]*\)")
 
         for idx in tqdm(range(num_seq)):
             for _ in range(lookahead):
@@ -709,12 +933,18 @@ class AzureDeepSeek(API):
         else:
             generations = deepseek_completions(all_prompts, model_name=self.model_type, engine_name=self.engine, openai_api_keys=[self.openai_api_key], openai_api_base=self.openai_api_base, num_procs=self.num_procs, top_p=0.95, temperature=self.temperature, sleep_time=self.sleep_time)['completions']
 
+        # **Added cleaning function **
+        #generations = batch_clean_texts(generations, use_threads=True, num_workers=8)
+
         gen_idx = -1
         for idx in tqdm(range(num_seq)):
             for j in range(lookahead):
                 gen_idx += 1
                 try:
                     seq = generations[gen_idx]
+                    #=======================
+                    #seq = allowed_characters.sub("", seq)  # Apply regex to remove unwanted 
+                    #=======================
                     seq = " ".join(seq.split())
                     if seq:
                         all_data[j].append(seq)
@@ -731,5 +961,6 @@ class AzureDeepSeek(API):
             all_labels.append(labels[idx])
 
         all_lens = [len(one_data) for one_data in all_data]
+        logging.info(f" _text_variation output lens  {all_lens}")
 
         return all_data, all_labels,   all_target_words, all_gen_words, all_masked_prompts

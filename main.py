@@ -14,6 +14,18 @@ os.environ["WANDB_DISABLED"] = "true"
 from collections import Counter
 from sklearn.metrics.pairwise import cosine_similarity
 import time
+
+# Suppress logs from various external libraries
+logging.getLogger("azure").setLevel(logging.ERROR)  # Suppress Azure SDK logs
+logging.getLogger("openai").setLevel(logging.ERROR)  # Suppress OpenAI API logs
+logging.getLogger("httpx").setLevel(logging.ERROR)  # Suppress HTTP request logs
+logging.getLogger("urllib3").setLevel(logging.ERROR)  # Suppress urllib3 logs
+logging.getLogger("asyncio").setLevel(logging.ERROR)  # Suppress asyncio logs
+
+# Suppress all warning messages globally
+logging.getLogger().setLevel(logging.ERROR)
+
+# Disable warnings completely (optional)
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -27,13 +39,14 @@ def main():
     setup_logging(os.path.join(args.result_folder, 'log.log'))
     logging.info(f'config: {args}')
     logging.info(f'API config: {api.args}')
-
+    # load private data
     all_private_samples, all_private_labels, private_labels_counter, private_labels_indexer = load_data(
         dataset=args.dataset,
         data_file=args.train_data_file,
         num_samples=args.num_private_samples,
         subsample_one_class=args.subsample_one_class)
 
+    # if we randomly subsample the private data, we save the subsampled data.
     if args.num_private_samples > 0:
         log_samples(samples=all_private_samples,  additional_info=all_private_labels,
                     folder=f'{args.result_folder}/train')
@@ -47,15 +60,17 @@ def main():
     if args.train_data_embeddings_file != '':
         logging.info(f'load features {args.train_data_embeddings_file}')
         all_private_features, all_private_labels = load_embeddings(
-            args.train_data_embeddings_file)  
+            args.train_data_embeddings_file)  # need to be full samples index
         all_private_samples = all_private_samples[:len(all_private_features)]
     else:
+        # extract the embeddings of the private data
         all_private_features = extract_features(
             data=all_private_samples,
             batch_size=args.feature_extractor_batch_size,
             model_name=args.feature_extractor,
         )
 
+    # Generating initial synthetic samples.
     if args.data_checkpoint_path != '':
         logging.info(
             f'Loading data checkpoint from {args.data_checkpoint_path}')
@@ -64,21 +79,22 @@ def main():
             data_file=args.data_checkpoint_path,
             num_samples=-1,
             gen=True,
-        )  
+        )  # load all samples
 
         if args.data_checkpoint_step < 0:
             raise ValueError('data_checkpoint_step should be >= 0')
         start_t = args.data_checkpoint_step + 1
-        private_seeds = seed_syn_samples
     else:
-        start_t = 1 
+        start_t = 1
         num_seed_samples = int(
         args.num_samples_schedule[0]/args.init_combine_divide_L)
-
+        #========================================================
+        # use private data for seed samples
         if args.r_data == 1:
-
+            logging.info('######### Use private data as initial seeds')
+            # for gpt family, gpt2 has token length limit 1024, we need to control the pormpt(requset) token length
             if args.model_type == 'gpt2':
-                max_token_length = 300 
+                max_token_length = 300 # was 300
             else:
                 max_token_length = -1
 
@@ -89,22 +105,70 @@ def main():
                 subsample_one_class=args.subsample_one_class,
                 max_token_length=max_token_length)
 
-            private_seeds = seed_real_samples
-            
             if args.noise_multiplier == 0:
 
-                abstracted_seed_syn_samples = abstract_texts(
+                # Abstract the seed_syn_samples
+                logging.info('######### Abstract the seed_syn_samples')
+
+                priv_sentiments_for_abstraction = [
+                    (x.split("\t")[1] if "\t" in x else x) for x in seed_additional_info]
+
+                abstracted_seed_syn_samples, diag = abstract_texts(
                     seed_real_samples,
-                    summarizer_model='sshleifer/distilbart-cnn-12-6', 
-                    batch_size=32)
+                    priv_sentiments=priv_sentiments_for_abstraction,
+                    summarizer_model_name="facebook/bart-large-cnn",
+                    embedding_model_name="sentence-t5-base",
+                    num_candidates=5,
+                    max_length=150,
+                    min_length=50,
+                    alpha=0.75,
+                    min_conf=0.55,
+                    attempts=2,
+                    return_diag=True,
+                    epsilon=args.noise_multiplier 
+                )
 
-                abstracted_seed_syn_samples_with_noise = semantic_transformations(abstracted_seed_syn_samples, replace_prob=0.2)
+                preserve = sum(1 for d in diag if d["target"] is None or (d["agree"] == 1.0 and d["conf"] >= 0.55)) / len(diag)
+                print(f"####### Private→Abstracted sentiment preservation: {preserve:.2%}")
 
-                os.makedirs(f'{args.result_folder}/0', exist_ok=True)
+                seed_syn_samples = abstracted_seed_syn_samples
 
-                seed_syn_samples = abstracted_seed_syn_samples_with_noise
-                #seed_syn_samples = abstracted_seed_syn_samples
+            else:
+                logging.info('######### Execute DP Abstraction')
+
+                priv_sentiments_for_abstraction = [
+                    (x.split("\t")[1] if "\t" in x else x) for x in seed_additional_info]
+
+                abstracted_seed_syn_samples, diag = abstract_texts(
+                    seed_real_samples,
+                    priv_sentiments=priv_sentiments_for_abstraction,
+                    summarizer_model_name="facebook/bart-large-cnn",
+                    embedding_model_name="sentence-t5-base",
+                    num_candidates=5,
+                    max_length=150,
+                    min_length=50,
+                    alpha=0.75,
+                    min_conf=0.55,
+                    attempts=2,
+                    return_diag=True,
+                    epsilon=args.noise_multiplier 
+                )
+
+                preserve = sum(1 for d in diag if d["target"] is None or (d["agree"] == 1.0 and d["conf"] >= 0.55)) / len(diag)
+                print(f"####### Private→Abstracted sentiment preservation: {preserve:.2%}")
+
+                seed_syn_samples = abstracted_seed_syn_samples
+            
+            os.makedirs(f'{args.result_folder}/0', exist_ok=True)
+            log_generation(fname=f'{args.result_folder}/0/real_abstracted.jsonl',
+                                    abstracted=np.stack([abstracted_seed_syn_samples], axis=1), realdata=np.stack([seed_real_samples], axis=1))
+            # for sentimental analysis, we save real samples to 0
+            log_samples(samples=seed_real_samples, additional_info=seed_additional_info,
+                    folder=f'{args.result_folder}/{start_t-1}')
+
+        #========================================================
         else:
+            logging.info('######### Generating initial samples')
             private_lens_dict = None
 
             seed_syn_samples, seed_additional_info, sync_labels_counter, all_prefix_prompts = api.text_random_sampling(num_samples=num_seed_samples,
@@ -112,23 +176,12 @@ def main():
             os.makedirs(f'{args.result_folder}/0', exist_ok=True)
             log_prompt_generation(fname=f'{args.result_folder}/0/prompt_generation.jsonl',
                                 prompts=all_prefix_prompts, generations=np.stack([seed_syn_samples], axis=1))
+            # save initial synthetic samples.
+            log_samples(samples=seed_syn_samples, folder=f'{args.result_folder}/{start_t-1}')
+
 
         if args.data_checkpoint_step >= 0:
             logging.info('Ignoring data_checkpoint_step')
-
-    log_samples(samples=seed_syn_samples, additional_info=seed_additional_info,
-                folder=f'{args.result_folder}/{start_t-1}')
-    
-
-    # if args.compute_fid:
-    #     synthetic_features = extract_features(
-    #         data=seed_syn_samples,
-    #         batch_size=args.feature_extractor_batch_size,
-    #         model_name=args.feature_extractor,
-
-    #     )
-    #     compute_fid(synthetic_features, all_private_features, args.feature_extractor,
-    #                 folder=args.result_folder,  step=start_t-1, log_online=args.log_online)
 
     if args.init_combine_divide_L > 1:
         parent_directory = os.path.dirname(args.data_checkpoint_path)
@@ -141,7 +194,7 @@ def main():
                 data_file=all_data_ckpt_path,
                 num_samples=-1,
                 gen=True,
-            )  
+            )  # load all samples
         else:
             syn_samples, additional_info = [], []
             current_idx = 0
@@ -153,26 +206,29 @@ def main():
                                                               num_samples_per_class]
                 seed_additional_info_per_class = seed_additional_info[
                     current_idx: current_idx + num_samples_per_class]
-
+                print(f"$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ Before first vairants len : {len(seed_syn_samples_per_class)}")
                 new_variants_samples_stacked, _, _, _, _ = api.text_variation(
-                    sequences=seed_syn_samples_per_class,  
+                    sequences=seed_syn_samples_per_class,  # seed samples
                     additional_info=seed_additional_info_per_class,
-                    num_variations_per_sequence=args.init_combine_divide_L-1, 
+                    num_variations_per_sequence=args.init_combine_divide_L-1,  # just do one variation
                     variation_degree=args.variation_degree_schedule[0]
                 )
 
+                # ================private data, do filetr================
                 if args.r_data == 1 and args.noise_multiplier == 0:
-                    
+
+
                     for x in new_variants_samples_stacked:  # L-1 variations
                         syn_samples.extend(x.tolist())
-                    
+
                     additional_info.extend(
                         seed_additional_info_per_class * (args.init_combine_divide_L-1))
 
                     sync_labels_counter[class_] = num_samples_per_class * \
                         (args.init_combine_divide_L-1)
+                #========================================================
                 else:
-                    syn_samples.extend(seed_syn_samples_per_class)  
+                    syn_samples.extend(seed_syn_samples_per_class)  # seed samples
                     for x in new_variants_samples_stacked:  # L-1 variations
                         syn_samples.extend(x.tolist())
                     additional_info.extend(
@@ -181,11 +237,14 @@ def main():
                         args.init_combine_divide_L
                 current_idx += num_samples_per_class
 
-            log_samples(samples=syn_samples, additional_info=additional_info,
-                        folder=f'{args.result_folder}/-1')
-    else: 
+            logging.info(f' @-@ filtered_samples shape {len(syn_samples)} label {len(additional_info)}')
+            log_samples(samples=syn_samples, folder=f'{args.result_folder}/-1')
+            
+    else: # no virations, just use the seed samples
         syn_samples, additional_info = seed_syn_samples, seed_additional_info
 
+    logging.info(
+        f'initial samples size {len(syn_samples)} label {len(additional_info)}')
     for key, value in sync_labels_counter.items():
         if value > 0:
             logging.info(f'initial samples label counter {key}: {value}')
@@ -195,7 +254,7 @@ def main():
 
         if args.lookahead_degree == 0:
             packed_samples = np.expand_dims(syn_samples, axis=1)
-        else: 
+        else: # @the default lookahead_degree == 0, so this text_variation does not run
             logging.info('Running text variation')
             packed_samples, variation_lables, all_target_words, all_gen_words, all_masked_prompts = api.text_variation(  # shape [# num_sample, # variations]
                 sequences=syn_samples,
@@ -215,6 +274,7 @@ def main():
         packed_features = []
         logging.info('Running feature extraction')
 
+        # iterate over # lookahead_degree variations.
         for i in range(packed_samples.shape[1]):
             sub_packed_features = extract_features(
                 data=packed_samples[:, i],
@@ -224,7 +284,9 @@ def main():
             )
             packed_features.append(sub_packed_features)
 
+        # take the averaged embedding for each sequence..
         packed_features = np.mean(packed_features, axis=0)
+        logging.info(f'feature extraction shape {packed_features.shape}')
         logging.info('Computing histogram')
         count = []
         current_idx = 0
@@ -236,24 +298,29 @@ def main():
         all_selected_samples = []
         all_selected_additional_info = []
 
+        # @in each iteration, we need to do this "for loop" for each class
         for class_i, class_ in enumerate(private_classes):
-            
+            # key must have the same order as  private_classes (from private_labels_counter)
+
             num_samples_per_class = sync_labels_counter[class_]
             if num_samples_per_class == 0:
                 continue
+            # get the count for each synthetic data
             public_features = packed_features[current_idx:
                                               num_samples_per_class+current_idx]
-
+            logging.info(
+                f'{class_}, {num_samples_per_class} , features shape {public_features.shape}')
             assert num_samples_per_class == public_features.shape[0]
 
             if args.r_data == 1 and args.noise_multiplier == 0:
-                selected_size = int(num_samples_per_class/(args.combine_divide_L-1))              
+                selected_size = int(num_samples_per_class/(args.combine_divide_L-1))
             else:
                 selected_size = int(num_samples_per_class/args.combine_divide_L)
-
+            # =====================================================
             if args.noise_multiplier > 0:
                 selected_size = int(selected_size * 0.9)
 
+            logging.info(f'selected_size  {selected_size}')
             if selected_size == 0:
                 sub_count = []
                 sub_new_indices = list(
@@ -265,6 +332,8 @@ def main():
                 new_variants_samples = selected_syn_samples*args.combine_divide_L
                 new_variants_additional_info = selected_additional_info * args.combine_divide_L
             else:
+
+
                 dp_threshold = args.noise_multiplier * np.sqrt(args.noise_multiplier) * 0.5
 
                 sub_count, sub_clean_count = dp_nn_histogram(
@@ -275,7 +344,7 @@ def main():
                     mode=args.nn_mode,
                     threshold=dp_threshold)
                 assert np.sum(sub_count) > 0
-           
+
                 # Generating new indices of synthetic data
                 if args.select_syn_mode == 'prob':
                     candidate_indices = np.arange(
@@ -319,23 +388,31 @@ def main():
                 else:
                     raise ValueError('combine_divide_L should be >= 1')
 
+                logging.info(
+                    f'_num_variations_per_sequence  {_num_variations_per_sequence}')
+
+                print(f"$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ Before Second vairants len : {len(selected_syn_samples)}")
                 second_variants_samples_stacked, _, _, _, _ = api.text_variation(
-                    sequences=selected_syn_samples,  
+                    sequences=selected_syn_samples,  # seed samples
                     additional_info=selected_additional_info,
-                    num_variations_per_sequence=_num_variations_per_sequence, 
+                    num_variations_per_sequence=_num_variations_per_sequence,
                     variation_degree=args.variation_degree_schedule[t]
                 )
                 for x in second_variants_samples_stacked:
                     new_variants_samples.extend(x.tolist())
                 new_variants_additional_info = selected_additional_info * (args.combine_divide_L - 1)
+                logging.info(
+                    f'?????? second_variants_samples_stacked  {len(second_variants_samples_stacked)}')
+
+                logging.info(f'new_variants_samples shape {len(new_variants_samples)} label {len(new_variants_additional_info)}')
 
                 new_syn_samples.extend(new_variants_samples)
                 new_additional_info.extend(new_variants_additional_info)
                 sync_labels_counter[class_] = len(
                     new_variants_samples)  # update class size
 
-            if args.save_syn_mode == 'selected':
-                all_selected_samples.extend(selected_syn_samples)
+            if args.save_syn_mode == 'selected': # @ default
+                all_selected_samples.extend(selected_syn_samples) 
                 all_selected_additional_info.extend(selected_additional_info)
             elif args.save_syn_mode == 'one_var':
                 all_selected_samples.extend(second_variants_samples_stacked[:, 0])
@@ -343,37 +420,20 @@ def main():
             elif args.save_syn_mode == 'all':
                 logging.info(
                     f'save_syn_mode == all')
-
                 all_selected_samples.extend(selected_syn_samples) 
                 all_selected_additional_info.extend(selected_additional_info)
-
+                #=============================================================================
                 all_selected_samples.extend(
-                    new_variants_samples)  
+                    new_variants_samples)  # all ---  L times size
                 all_selected_additional_info.extend(
                     new_variants_additional_info)
 
             current_idx += public_features.shape[0]
 
-        all_data = log_samples(samples=all_selected_samples,
-                additional_info=all_selected_additional_info, folder=f'{args.result_folder}/{t}')
-
-        # if args.compute_fid:
-        #     synthetic_features = extract_features(
-        #         data=all_selected_samples,
-        #         batch_size=args.feature_extractor_batch_size,
-        #         model_name=args.feature_extractor,
-
-        #     )
-        #     compute_fid(synthetic_features, all_private_features, args.feature_extractor,
-        #                 folder=args.result_folder,  step=t, log_online=args.log_online)
-        
-
-
-        syn_samples = new_syn_samples 
+        log_samples(samples=all_selected_samples,folder=f'{args.result_folder}/{t}')
+        syn_samples = new_syn_samples # @ syn_samples were saved in {t}_all/sample.csv
         additional_info = new_additional_info
-        all_data = log_samples(
-                    samples=syn_samples,  additional_info=additional_info, folder=f'{args.result_folder}/{t}_all')
-
+        log_samples(samples=syn_samples,  folder=f'{args.result_folder}/{t}_all')
 
 if __name__ == '__main__':
     main()

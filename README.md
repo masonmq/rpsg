@@ -64,8 +64,8 @@ DeepSeek_CONFIG={
     }
 ```
 
-## Results
-The experimental results for Downstream Task Performance (Table 1), Lexical Diversity (Table 2), and Distributional and Semantic Similarity (Table 3) are located in the `result` directory.
+<!-- ## Results
+The experimental results for Downstream Task Performance (Table 1), Lexical Diversity (Table 2), and Distributional and Semantic Similarity (Table 3) are located in the `result` directory. -->
 
 ## Acknowledgement
 

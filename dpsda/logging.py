@@ -78,6 +78,7 @@ def log_prompt_generation(fname="prompt_generation.jsonl", prompts=[], generatio
         return
     with open(fname, "w") as file:
         for i in range(len(prompts)):
+        #for i in range(len(new_variants_samples)):
             try:
                 json_str = json.dumps(
                         {"prompt": prompts[i], "generation": new_variants_samples[i]})
@@ -127,6 +128,10 @@ def compute_fid(synthetic_features, all_private_features, feature_extractor, fol
     logging.info(f'fid={fid} F1={state}')
     log_fid(folder, fid, state["f1"],
             state["precision"], state["recall"], step)
+    # if log_online:
+    #     import wandb
+    #     wandb.log({f'metric/fid_{feature_extractor[:10]}': fid, }, step=step)
+
 
 def log_fid(folder, fid, f1, precision, recall, t, save_fname='fid.csv'):
     with open(os.path.join(folder, save_fname), 'a') as f:
@@ -141,47 +146,81 @@ def log_fid_list(folder, fids, t, save_fname='fid.csv'):
         writer.writerow(write_list)
 
 
-def log_samples(samples, additional_info, folder):
+def log_samples(samples, folder, additional_info=None):
     if not os.path.exists(folder):
         os.makedirs(folder)
 
     all_data = []
-    for i in range(len(samples)):
-        seq = samples[i]
-        labels = additional_info[i]
-        if seq:
-            seq = " ".join(seq.split())
-            if "pubmed" in labels:
-                all_data.append([seq])
-            elif "sd" in labels:
-                all_data.append([seq])
-            else:
-                labels = labels.strip().split("\t")
-                all_data.append([seq]+labels)
+    first_tag = None
 
-    if "pubmed" in additional_info[0]:  # unconditional
-        title = ['text']
-    elif "sd" in additional_info[0]:  # unconditional
-        title = ['text']
+    for i, seq in enumerate(samples):
+        if not seq:
+            continue
+
+        # normalize whitespace in the text
+        seq_clean = " ".join(str(seq).split())
+
+        row = [seq_clean]
+        tag = ""
+
+        if additional_info is not None:
+            labels = additional_info[i]
+            parts = labels.strip().split("\t") if isinstance(labels, str) else [str(labels)]
+            tag = parts[0].lower() if parts else ""
+            if "pubmed" in tag:
+                row = [seq_clean]  # only save text
+            elif "sd" in tag:
+                label1 = parts[1] if len(parts) > 1 else ""
+                # here label2 is the private length (already precomputed & stored as 3rd part)
+                label2 = parts[2] if len(parts) > 2 else ""
+                row = [seq_clean, label1, label2]
+            else:
+                row = [seq_clean] + parts
+
+            if first_tag is None:
+                first_tag = tag
+        else:
+            # no additional info provided, just keep the text
+            row = [seq_clean]
+            if first_tag is None:
+                first_tag = ""
+
+        all_data.append(row)
+
+    # ----- headers -----
+    if first_tag == "pubmed":
+        title = ["text"]
+    elif first_tag == "sd":
+        # for synthetic sd data we include sentiment + label2
+        title = ["text", "label1", "label2"]
+    elif additional_info is not None:
+        # generic case: just dump one 'label' column
+        title = ["text", "label"]
     else:
-        title = ['text', 'label1', 'label2']
+        # nothing extra
+        title = ["text"]
+
     try:
-        with open(os.path.join(folder, 'samples.csv'), 'w', newline='', encoding="utf-8") as wf:
-            csv_writer = csv.writer(wf)
-            csv_writer.writerow(title)
-            for obj in all_data:
-                if obj[0]:  # remove empty sequences
-                    #csv_writer.writerow(obj)
-                    cleaned_obj = [x.encode('utf-8', 'replace').decode('utf-8') if isinstance(x, str) else x for x in obj]
-                    csv_writer.writerow(cleaned_obj)
-    except:  # in case there are some special characters in the text
-        with open(os.path.join(folder, 'samples.csv'), 'w', newline='', encoding="utf-8") as wf:
-            csv_writer = csv.writer(
-                wf, quoting=csv.QUOTE_NONE,  quotechar='', escapechar='\\')
-            csv_writer.writerow(title)
-            for obj in all_data:
-                if obj[0]:  # remove empty sequences
-                    #csv_writer.writerow(obj)
-                    cleaned_obj = [x.encode('utf-8', 'replace').decode('utf-8') if isinstance(x, str) else x for x in obj]
-                    csv_writer.writerow(cleaned_obj)
+        with open(os.path.join(folder, "samples.csv"), "w", newline="", encoding="utf-8") as wf:
+            writer = csv.writer(wf)
+            writer.writerow(title)
+            for row in all_data:
+                cleaned = [
+                    x.encode("utf-8", "replace").decode("utf-8") if isinstance(x, str) else x
+                    for x in row
+                ]
+                writer.writerow(cleaned)
+    except Exception as e:
+        with open(os.path.join(folder, "samples.csv"), "w", newline="", encoding="utf-8") as wf:
+            writer = csv.writer(wf, quoting=csv.QUOTE_NONE, quotechar="", escapechar="\\")
+            writer.writerow(title)
+            for row in all_data:
+                cleaned = [
+                    x.encode("utf-8", "replace").decode("utf-8") if isinstance(x, str) else x
+                    for x in row
+                ]
+                writer.writerow(cleaned)
+
     return all_data
+
+

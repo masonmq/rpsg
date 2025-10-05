@@ -1,11 +1,11 @@
 mlm_prob=0.6
-var_type="sd_rephrase_tone" 
+var_type="sd_rephrase_tone"
 feat_ext="sentence-t5-base"
 temperature=1.0
-length=448
-num_seed_samples=520
+length=200
+num_seed_samples=900
 lookahead_degree=0
-k=1
+k=1 # number of variations
 L=$((k+1))
 init_L=${L}
 num_samples=$((L*num_seed_samples))
@@ -14,34 +14,18 @@ g_epochs=1
 word_var_scale=60
 max_token_word_scale=5
 select_syn_mode=rank
-model_type="gpt-4o-mini" 
-noise=0 
+model_type="gpt-4o-mini"
+noise=4.0
 feature_extractor_batch_size=1024
 api="AzureGPT"
 save_syn_mode=all
 r_data=1
 
 export CUDA_VISIBLE_DEVICES=0
-
-args="--dynamic_len --word_var_scale ${word_var_scale} --max_token_word_scale ${max_token_word_scale}"
-
+args=""
 result_folder="result/sd/${model_type}_${feat_ext}/${num_samples}_n${noise}_L${L}_initL${init_L}_var${lookahead_degree}_${var_type}_${select_syn_mode}_len${length}var${word_var_scale}wo2to${max_token_word_scale}_t${temperature}"
 
-
-## load datacheckpoint 
 data_checkpoint_args=""
-for  (( iter=0; iter<=epochs; iter++ ))
-do
-train_file=${result_folder}/${iter}/samples.csv
-if [ -e "$train_file" ]; then
-    echo "$train_file does exist."
-    # load from  data checkpoint
-    data_checkpoint_args="--data_checkpoint_step ${iter} --data_checkpoint_path ${result_folder}/${iter}/samples.csv"
-else
-    echo "$train_file does not exist."
-fi
-done
-echo load data from ${data_checkpoint_args} ${args}
 
 python main.py ${args} ${data_checkpoint_args} \
 --train_data_file "data/sd/sd_train_1k.csv" \
@@ -66,21 +50,21 @@ python main.py ${args} ${data_checkpoint_args} \
 --result_folder ${result_folder} \
 --train_data_embeddings_file "result/embeddings/${feat_ext}/sd_train_all.embeddings.npz" \
 --r_data ${r_data} \
---save_syn_mode ${save_syn_mode} 
+--save_syn_mode ${save_syn_mode}
 
 
 
 max_seq_length=512
 f_batch_size=32
 min_token_threshold=50
-f_lr=5e-5 
+f_lr=1e-3 #1e-4
 f_wd=0.01
 item=${result_folder}
 f_epochs=-1
 
-for model in 'bert-small' 
+for model in 'bert-small'
 do
-    num_train_epochs=5
+    num_train_epochs=3
     for  (( iter=f_epochs; iter>=-1; iter-- ))
     do
         train_file="${item}/${iter}"
@@ -97,31 +81,35 @@ do
                 echo "Training directory: $train_output_dir"
                 echo "Evaluation directory: $eval_output_dir"
 
-                python utility_eval/run_clm.py \
-                    --model_name_or_path prajjwal1/${model} \
-                    --clean_dataset  \
-                    --min_token_threshold ${min_token_threshold} \
-                    --output_dir ${train_output_dir} \
-                    --train_file ${train_file}/samples.csv \
-                    --validation_file data/sd/val.csv \
-                    --per_device_train_batch_size ${f_batch_size} \
-                    --per_device_eval_batch_size ${f_batch_size} \
-                    --learning_rate ${f_lr} \
-                    --do_train \
-                    --do_eval \
-                    --weight_decay ${f_wd} \
-                    --num_train_epochs ${num_train_epochs} \
-                    --save_total_limit 2 \
-                    --overwrite_cache \
-                    --gradient_accumulation_steps 2
+                 python utility_eval/run_clm.py \
+                     --model_name_or_path prajjwal1/${model} \
+                     --clean_dataset  \
+                     --min_token_threshold ${min_token_threshold} \
+                     --output_dir ${train_output_dir} \
+                     --train_file ${train_file}/samples.csv \
+                     --validation_file data/sd/val.csv \
+                     --per_device_train_batch_size ${f_batch_size} \
+                     --per_device_eval_batch_size ${f_batch_size} \
+                     --learning_rate ${f_lr} \
+                     --do_train \
+                     --do_eval \
+                     --weight_decay ${f_wd} \
+                     --num_train_epochs ${num_train_epochs} \
+                     --save_total_limit 2 \
+                     --overwrite_cache \
+                     --gradient_accumulation_steps 2 \
+                     --save_strategy no \
+                     --save_safetensors=False
 
-                python utility_eval/run_clm.py \
-                    --model_name_or_path ${train_output_dir} \
-                    --output_dir ${eval_output_dir} \
-                    --validation_file data/sd/test.csv \
-                    --per_device_eval_batch_size ${f_batch_size} \
-                    --do_eval \
-                    --overwrite_cache
+                 python utility_eval/run_clm.py \
+                     --model_name_or_path ${train_output_dir} \
+                     --output_dir ${eval_output_dir} \
+                     --validation_file data/sd/test.csv \
+                     --per_device_eval_batch_size ${f_batch_size} \
+                     --do_eval \
+                     --overwrite_cache \
+                     --save_strategy no \
+                     --save_safetensors=False
             fi
         fi
     done
@@ -138,15 +126,18 @@ python filtering_wp.py \
     --input_csv ${result_folder}/1_all/sanitized_filter_sample.csv \
     --output_csv ${result_folder}/1_all/filtered_samples.csv \
 
-
+#max_seq_length=512
 d_batch_size=32
-d_lr=5e-5 #1e-4
+#min_token_threshold=50
+d_lr=1e-3 #1e-4
 d_wd=0.01
+#item=${result_folder}
 d_epochs=1
+echo "====LR: $d_lr ====="
 
-for model in 'bert-small' 
+for model in 'bert-small'
 do
-    num_train_epochs=5
+    num_train_epochs=3
     for (( iter=d_epochs; iter>=1; iter-- ))
     do
         train_file="${item}/${iter}_all"
@@ -178,7 +169,9 @@ do
                     --num_train_epochs ${num_train_epochs} \
                     --save_total_limit 2 \
                     --overwrite_cache \
-                    --gradient_accumulation_steps 2
+                    --gradient_accumulation_steps 2 \
+                    --save_strategy no \
+                    --save_safetensors=False
 
                 python utility_eval/run_clm.py \
                     --model_name_or_path ${train_output_dir} \
@@ -186,7 +179,9 @@ do
                     --validation_file data/sd/test.csv \
                     --per_device_eval_batch_size ${d_batch_size} \
                     --do_eval \
-                    --overwrite_cache
+                    --overwrite_cache \
+                    --save_strategy no \
+                    --save_safetensors=False
             fi
         fi
     done
@@ -196,14 +191,14 @@ m_epochs=1
 synthetic_start_iter=1
 
 python metric.py \
-    --private_data_size 1000 \
+    --private_data_size 10000 \
     --synthetic_folder ${result_folder} \
-    --run 5  \
+    --run 1  \
     --min_token_threshold ${min_token_threshold} \
     --synthetic_iteration ${m_epochs} \
     --synthetic_start_iter ${synthetic_start_iter} \
-    --original_file "data/sd/sd_train_1k.csv"  \
-    --train_data_embeddings_file result/embeddings/${feat_ext}/sd_train_all.embeddings.npz \
+    --original_file "data/sd/sd_train.csv"  \
+    --train_data_embeddings_file result/embeddings/${feat_ext}/sd_train_all.embeddings__all.npz \
     --model_name_or_path ${feat_ext} \
     --dataset sd \
 
@@ -216,9 +211,4 @@ python diversity.py \
 
 python pii_evaluate.py \
     --synthetic_file ${train_file}/filtered_samples.csv \
-    --model_input_dir ${train_file}/fd_train_${model} \
     --output_dir ${train_file} \
-
-
-
-
