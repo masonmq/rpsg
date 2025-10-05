@@ -89,8 +89,6 @@ class HFAPI(API):
             '--variation_type',
             type=str,
             default='sd_rephrase_tone',
-            # choices=["yelp_rephrase_tone", "openreview_rephrase_tone", "pubmed_rephrase_tone",
-            #          "sd_rephrase_tone",],
             help='Which image feature extractor to use')
         parser.add_argument("--mlm_probability", type=float, default=0.5)
 
@@ -143,7 +141,6 @@ class HFAPI(API):
 
         simulate_num = 0
         for prompt in tqdm(prompt_counter):
-            # generation is proportional to the label distributions
             simulate_num_seq_to_generate = round(
                 prompt_counter[prompt] * ratio_generation_training)
             simulate_num += simulate_num_seq_to_generate
@@ -152,7 +149,6 @@ class HFAPI(API):
             f"should -- simulated generated sequences: %d", simulate_num)
         all_prefix_prompts = []
         for prompt in tqdm(prompt_counter):
-            # generation is proportional to the label distributions
             num_seq_to_generate = round(
                 prompt_counter[prompt] * ratio_generation_training)
             if self.use_subcategory:                    
@@ -191,9 +187,8 @@ class HFAPI(API):
             else:
                 full_prompt_text = prompt
             
-            # prompt_input_ids = self.tokenizer(full_prompt_text)['input_ids']
             if isinstance(full_prompt_text, list):
-                # Use chat template for phi-4 prompts (returns a tensor)
+
                 formatted_prompt = self.tokenizer.apply_chat_template(
                     full_prompt_text, return_tensors="pt", padding=True, truncation=False
                 ).to(self.device)
@@ -211,7 +206,6 @@ class HFAPI(API):
                                                 max_length=self.length, batch_size=self.random_sampling_batch_size,
                                                 before_gen_length=before_gen_length)
                 all_sequences += sequences
-            #all_prefix_prompts += [full_prompt_text] * num_seq_to_generate
             all_prefix_prompts += [copy.deepcopy(full_prompt_text)] * num_seq_to_generate
 
             
@@ -230,21 +224,16 @@ class HFAPI(API):
             for _ in range(seq_num):
                 raw_generated = self.generate_long_text(prompt, step_size=200)
 
-                # CLEANING STARTS HERE
                 cleaned_text = raw_generated.strip()
 
-                # Remove JSON-like wrapping if it exists
                 cleaned_text = re.sub(r'^[^{\[]*?[\[{]?"?text"?\s*:\s*"?', '', cleaned_text)
                 cleaned_text = cleaned_text.strip('"{}[]')
 
-                # Split at 'system', 'user', or 'assistant', keep only last 'assistant' response
                 segments = re.split(r'(?i)(system|user|assistant)', cleaned_text)
                 if 'assistant' in segments:
-                    # Find the last 'assistant' and join the rest
                     last_idx = len(segments) - 1 - segments[::-1].index('assistant')
                     cleaned_text = ''.join(segments[last_idx+1:]).strip()
 
-                # Remove leading structured outlines if any (e.g., 1)... 2)...)
                 cleaned_text = re.sub(r'(?:\*\*Solution \d+:\*\*.*?)?(?:\d\)\s.*?)+(?=[A-Z])', '', cleaned_text, flags=re.DOTALL)
 
                 cleaned_text = cleaned_text.strip('"').strip()
@@ -260,7 +249,6 @@ class HFAPI(API):
             if self.dry_run:
                 generated_sequences = ["s" * max_length] * batch_size
             else:
-                #input_ids = torch.tensor(prompt).repeat(batch_size, 1).to(self.device)
                 input_ids = torch.as_tensor(prompt, device=self.device).repeat(batch_size, 1)
 
                 with torch.no_grad():
@@ -303,10 +291,10 @@ class HFAPI(API):
                 labels=list(additional_info),
                 variation_degree=variation_degree,
                 variation_type=self.variation_type,
-                batch_size=self.variation_batch_size)  # Keep batch size reasonable
+                batch_size=self.variation_batch_size)  
             variations.append(sub_variations)
 
-            if i % 5 == 0:  # Reduce CUDA cache clearing frequency
+            if i % 5 == 0:  
                 torch.cuda.empty_cache()
         
         return np.stack(variations, axis=1), var_labels, [], [], []
@@ -347,7 +335,6 @@ class HFAPI(API):
             if _sent in {"positive", "negative"}:
                 system_prompt += f"Ensure the rewritten text clearly expresses a {_sent} sentiment. "
 
-            # Firm but still soft length hint (only if we have target words)
             if _tgt_words and _tgt_words > 0:
                 lo = max(1, int(round(0.85 * _tgt_words)))
                 hi = int(round(1.15 * _tgt_words))
@@ -450,12 +437,11 @@ class HFAPI(API):
         Extracts only the first 'assistant' response and removes system/user content.
         Captures everything after the first 'assistant' and stops at the next 'system'.
         """
-        # Match text starting after first "assistant" and ending at the next "system"
         match = re.search(r"assistant\s*([\s\S]+?)(?=\bsystem\b|\bsystem\B|$)", text, re.IGNORECASE)
         if match:
             response = match.group(1).strip()
             return response
-        return text.strip()  # Fallback if no match is found
+        return text.strip()  
 
 
 
@@ -501,9 +487,9 @@ class HFAPI(API):
                     if cleaned_response:
                         all_data.append(cleaned_response)
                     else:
-                        all_data.append(batch_messages[idx][-1]['content'])  # fallback
+                        all_data.append(batch_messages[idx][-1]['content'])  
 
-                    all_labels.append(lab)  # keep your original behavior
+                    all_labels.append(lab)  
 
 
             torch.cuda.empty_cache()
@@ -546,10 +532,6 @@ class HFAPI(API):
         return up
 
     def _classify_chunked_with_conf(self, text, max_chars=512, stride=400):
-        """
-        Classify long text via overlapping chunks.
-        Returns (label_uppercased, avg_conf_of_that_label).
-        """
         from collections import Counter
         import pandas as pd
 
@@ -568,11 +550,10 @@ class HFAPI(API):
             i += stride
 
         try:
-            results = self.sentiment_clf(chunks)  # [{'label':..., 'score':...}]
+            results = self.sentiment_clf(chunks)  
         except Exception:
             return "ERROR", 0.0
 
-        # normalize labels & collect scores
         by_label = {}
         for r in results:
             try:
@@ -586,7 +567,6 @@ class HFAPI(API):
         if not by_label:
             return "ERROR", 0.0
 
-        # majority by count; tie-break by higher mean confidence
         def key_fn(item):
             lab, scores = item
             return (len(scores), sum(scores)/len(scores))
@@ -597,12 +577,7 @@ class HFAPI(API):
 
 
     def generate_with_sentiment_guard(self, messages, target_label, max_attempts=4, threshold=None):
-        """
-        Try up to `max_attempts` to generate text whose sentiment matches `target_label`.
-        - If at least one attempt matches, return the matching candidate with highest confidence.
-        - If none match, return the overall highest-confidence candidate (never empty).
-        - `threshold` (e.g., 0.60) is optional; if set, we early-return when a match also clears it.
-        """
+
         self._ensure_sentiment_clf()
         target = str(target_label).strip().upper()
 
@@ -610,31 +585,24 @@ class HFAPI(API):
         best_any_text, best_any_conf, best_any_pred = "", -1.0, "ERROR"
 
         for _ in range(max_attempts):
-            # 1) pack chat -> ids
             input_ids = self.tokenizer.apply_chat_template(
                 [messages], return_tensors="pt", padding=True, truncation=False
             ).to(self.device)[0].unsqueeze(0)
 
-            # 2) generate with your function (ensure it returns a string)
             gen = self.generate_long_text(input_ids, step_size=200)
             text = getattr(self, "extract_first_assistant_response", lambda x: x)(gen) or ""
 
-            # 3) classify with confidence
-            pred, conf = self._classify_chunked_with_conf(text)  # <- see helper just below
+            pred, conf = self._classify_chunked_with_conf(text)  
 
-            # track overall best (for fallback)
             if conf > best_any_conf:
                 best_any_text, best_any_conf, best_any_pred = text, conf, pred
 
-            # check for target match
             if pred == target:
                 if conf > best_match_conf:
                     best_match_text, best_match_conf = text, conf
-                # optional early exit on strong match
                 if threshold is not None and conf >= float(threshold):
                     return best_match_text, pred
 
-        # return best match if any, else best overall (never empty)
         if best_match_text is not None:
             return best_match_text, target
         return best_any_text, best_any_pred

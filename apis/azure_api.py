@@ -9,7 +9,6 @@ import copy
 import openai
 import re
 import collections
-#from .utils import set_seed, get_subcategories, ALL_styles, ALL_OPENREVIEW_styles, ALL_PUBMED_styles, PROMPTS_templates, PUBMED_INIT_templates
 from .utils import *
 from .openai_chat import openai_completions
 from .deepseek_chat import deepseek_completions
@@ -23,16 +22,16 @@ from dpsda.refinement import *
 
 # MODEL_CONFIG = {
 #     'gpt-4o-mini': 
-#     {"openai_api_key":  "33qduXp7lL3dZkkmA3y6RTs0yAPAJfzrrRPuFBMxDjaqZX1BqzZGJQQJ99BBACHYHv6XJ3w3AAAAACOGll8I",
-#     "openai_api_base": "https://docma-m79lfd36-eastus2.openai.azure.com/",
+#     {"openai_api_key":  "I",
+#     "openai_api_base": "",
 #      "engine": 'gpt-4o-mini',
 #                       },
 # }
 
 # MODEL_CONFIG = {
 #     'gpt-35-turbo': 
-#     {"openai_api_key":  "33qduXp7lL3dZkkmA3y6RTs0yAPAJfzrrRPuFBMxDjaqZX1BqzZGJQQJ99BBACHYHv6XJ3w3AAAAACOGll8I",
-#     "openai_api_base": "https://docma-m79lfd36-eastus2.openai.azure.com/",
+#     {"openai_api_key":  "",
+#     "openai_api_base": "",
 #      "engine": 'gpt-35-turbo',
 #                       },
 # }
@@ -40,8 +39,8 @@ from dpsda.refinement import *
 # deepseek-r1
 # DeepSeek_CONFIG = {
 #     'DeepSeek-R1': 
-#     {"openai_api_key":  "3hAeLM8kFzw4FPqk6gqYFFZsF6NmKDY8mTK8C4SZVyEeA6Ua8pRxJQQJ99BBACHYHv6XJ3w3AAAAACOGlOgj111",
-#     "openai_api_base": "https://docma9859262271.services.ai.azure.com111",
+#     {"openai_api_key":  "",
+#     "openai_api_base": "",
 #      "engine": 'DeepSeek-R1',
 #                       },
 # }
@@ -51,23 +50,23 @@ from dpsda.refinement import *
 ## qfm
 MODEL_CONFIG = {
     'gpt-4o-mini': 
-    {"openai_api_key":  "CjG0AxPH23nyAEpmPzQEC4BiPkTTz9zHzIsKHg7m2fcQYXUBf8VYJQQJ99AJAC5RqLJXJ3w3AAABACOGgxpo",
-    "openai_api_base": "https://qfm50-m2vzxvan-westeurope.openai.azure.com/",
+    {"openai_api_key":  "",
+    "openai_api_base": "",
      "engine": 'gpt-4o-mini',
                       },
 }
 
 # MODEL_CONFIG = {
-#     'gpt-35-turbo': {"openai_api_key":  "CjG0AxPH23nyAEpmPzQEC4BiPkTTz9zHzIsKHg7m2fcQYXUBf8VYJQQJ99AJAC5RqLJXJ3w3AAABACOGgxpo",
-#                       "openai_api_base": "https://qfm50-m2vzxvan-westeurope.openai.azure.com/",
+#     'gpt-35-turbo': {"openai_api_key":  "",
+#                       "openai_api_base": "",
 #                       "engine": 'gpt-35-turbo',
 #                       },
 # }
 
 # MODEL_CONFIG = {
 #     'gpt-4': 
-#     {"openai_api_key":  "CjG0AxPH23nyAEpmPzQEC4BiPkTTz9zHzIsKHg7m2fcQYXUBf8VYJQQJ99AJAC5RqLJXJ3w3AAABACOGgxpo",
-#     "openai_api_base": "https://qfm50-m2vzxvan-westeurope.openai.azure.com/",
+#     {"openai_api_key":  "",
+#     "openai_api_base": "",
 #      "engine": 'gpt-4-2',
 #                       },
 # }
@@ -77,8 +76,8 @@ MODEL_CONFIG = {
 ## zh
 # MODEL_CONFIG = {
 #     'gpt-4o-mini': 
-#     {"openai_api_key":  "AKDWGUzv2LqbH3mZf39UZNXian8VWMQARzTKbUBguyEoMCiXLfesJQQJ99BCACHYHv6XJ3w3AAAAACOGjfAh",
-#     "openai_api_base": "https://zhang0243374003.openai.azure.com/",
+#     {"openai_api_key":  "",
+#     "openai_api_base": "",
 #      "engine": 'gpt-4o-mini',
 #                       },
 # }
@@ -188,10 +187,8 @@ class AzureAPI(API):
         set_seed(seed=seed, n_gpu=self.n_gpu)
 
         self.sleep_time = sleep_time
-        #if 'blank_fill' in self.variation_type:
         if 'sd' in self.variation_type or 'pubmed' in self.variation_type:
             from transformers import BertTokenizer
-            #print("@@@@@@@@ self.variation_type: ", self.variation_type)
             self.mask_tokenizer = BertTokenizer.from_pretrained(
                 "bert-base-cased",  mask_token="_")
             self.encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
@@ -266,7 +263,6 @@ class AzureAPI(API):
         # Check if we exceed token or request limits
         if tokens_used + tokens > MAX_TOKENS_PER_MINUTE or requests_made >= MAX_REQUESTS_PER_MINUTE:
             sleep_time = 60 - elapsed_time  # Wait the remaining time in the minute
-            #print(f"Rate limit reached, sleeping for {sleep_time:.2f} seconds...")
             time.sleep(sleep_time)
             tokens_used = 0
             requests_made = 0
@@ -300,9 +296,7 @@ class AzureAPI(API):
                 syn_samples += sequences
                 all_prefix_prompts += prefix_prompts
 
-                #additional_info += [prompt_text] * num_seq_to_generate
                 additional_info += [prompt_text] * len(sequences)
-                #sync_labels_counter[prompt_text] = num_seq_to_generate
                 sync_labels_counter[prompt_text] = len(sequences)
 
         return syn_samples, additional_info, sync_labels_counter, all_prefix_prompts
@@ -365,8 +359,7 @@ class AzureAPI(API):
 
         logging.info(f"len all_data:  {len(all_data)}")
         logging.info(f"seq_num:  {seq_num}")
-        # if len(all_data) > seq_num:
-        #     all_data = random.sample(all_data, seq_num)
+        
         return all_data, all_prefix_prompts
 
     def text_variation(self, sequences, additional_info,
@@ -416,7 +409,6 @@ class AzureAPI(API):
         elif "pubmed_rephrase_tone" in variation_type:
             selected_style = ALL_PUBMED_styles[random.randrange(
                 len(ALL_PUBMED_styles))]
-            #prompt = f"Use different words to rephrase the following sentences {selected_style}:\n{sequence} \n"
             prompt = f"Rephrase the following sentences as an abstract for medical research paper :\"{sequence}\" \n"
 
         elif "sd_rephrase_tone" in variation_type:
@@ -428,9 +420,6 @@ class AzureAPI(API):
             selected_style = ALL_SD_styles[random.randrange(
                 len(ALL_SD_styles))]
             prompt = f"You are required to fill in the blanks with more details {selected_style} for the input passage. If there is no blanks, please output the original passage: \"{masked_seq}\"\n"
-            #prompt = instruction + \
-                # f"Please fill in the blanks in the following sentences to write a passage of approximately 200 words in the tone of a person who is struggling with poverty: \"{masked_seq}\". Only use letters, digits, and standard punctuation marks like commas and periods. **End the passage with a single period, with no additional symbols or characters after it.**\n"
-            # prompt = "Please write a passage of approximately 200 words {} to describe a person who is struggling with poverty:\n{} \n".format(selected_style, masked_seq)
                 
         
         elif "openreview_blank_fill_1_shot_word" in variation_type:
@@ -476,10 +465,6 @@ class AzureAPI(API):
         all_target_words = []
         all_gen_words = []
 
-        # if self.r_data == 1:
-        #     message_constructor = MessageConstructor(
-        #         PROMPTS_templates["private_pubmed"]['sys_prompt'], PROMPTS_templates[self.var_template]['task_desc'])
-        # else:
         message_constructor = MessageConstructor(
             PROMPTS_templates[self.var_template]['sys_prompt'], PROMPTS_templates[self.var_template]['task_desc'])
 
@@ -515,8 +500,6 @@ class AzureAPI(API):
             generations = openai_completions(all_prompts, model_name=self.model_type, engine_name=self.engine, openai_api_keys=[self.openai_api_key], openai_api_base=self.openai_api_base,
                                              num_procs=self.num_procs,  top_p=0.95, temperature=self.temperature, sleep_time=self.sleep_time)['completions']
 
-        # **Added cleaning function **
-        #generations = batch_clean_texts(generations, use_threads=True, num_workers=8)
 
         gen_idx = -1
         for idx in tqdm(range(num_seq)):
@@ -524,9 +507,6 @@ class AzureAPI(API):
                 gen_idx += 1
                 try:
                     seq = generations[gen_idx]
-                    #=======================
-                    #seq = allowed_characters.sub("", seq)  # Apply regex to remove unwanted 
-                    #=======================
                     seq = " ".join(seq.split())
                     if seq:
                         all_data[j].append(seq)
@@ -612,7 +592,6 @@ class AzureDeepSeek(API):
         set_seed(seed=seed, n_gpu=self.n_gpu)
 
         self.sleep_time = sleep_time
-        #if 'blank_fill' in self.variation_type:
         if 'sd' in self.variation_type or 'pubmed' in self.variation_type:
             from transformers import BertTokenizer
             self.mask_tokenizer = BertTokenizer.from_pretrained(
@@ -688,7 +667,6 @@ class AzureDeepSeek(API):
         # Check if we exceed token or request limits
         if tokens_used + tokens > MAX_TOKENS_PER_MINUTE or requests_made >= MAX_REQUESTS_PER_MINUTE:
             sleep_time = 60 - elapsed_time  # Wait the remaining time in the minute
-            #print(f"Rate limit reached, sleeping for {sleep_time:.2f} seconds...")
             time.sleep(sleep_time)
             tokens_used = 0
             requests_made = 0
@@ -722,9 +700,7 @@ class AzureDeepSeek(API):
                 syn_samples += sequences
                 all_prefix_prompts += prefix_prompts
 
-                #additional_info += [prompt_text] * num_seq_to_generate
                 additional_info += [prompt_text] * len(sequences)
-                #sync_labels_counter[prompt_text] = num_seq_to_generate
                 sync_labels_counter[prompt_text] = len(sequences)
 
         return syn_samples, additional_info, sync_labels_counter, all_prefix_prompts
@@ -773,7 +749,6 @@ class AzureDeepSeek(API):
         if self.dry_run:
             generations = [prompt[0][1]["content"] for prompt in all_prompts]
         else:
-            #self.enforce_rate_limit(10)
             generations = deepseek_completions(all_prompts, model_name=self.model_type, engine_name=self.engine, openai_api_keys=[self.openai_api_key], openai_api_base=self.openai_api_base,
                                              num_procs=self.num_procs,  top_p=self.p, temperature=self.temperature)['completions']
 
@@ -787,8 +762,6 @@ class AzureDeepSeek(API):
 
         logging.info(f"len all_data:  {len(all_data)}")
         logging.info(f"seq_num:  {seq_num}")
-        # if len(all_data) > seq_num:
-        #     all_data = random.sample(all_data, seq_num)
         return all_data, all_prefix_prompts
 
     def text_variation(self, sequences, additional_info,
@@ -839,21 +812,16 @@ class AzureDeepSeek(API):
             selected_style = ALL_PUBMED_styles[random.randrange(
                 len(ALL_PUBMED_styles))]
             prompt = f"Use different words to rephrase the following sentences {selected_style}:\n{sequence} \n"
-            #prompt = f"Rephrase the following sentences as an abstract for medical research paper in clear and natural English:\"{sequence}\" \n"
 
         elif "sd_rephrase_tone" in variation_type:
             selected_style = ALL_SD_styles[random.randrange(
                 len(ALL_SD_styles))]
-            #prompt = f"Use different words to rephrase the following sentences {selected_style}: \"{sequence}\"\n"
             prompt = f"Rrephrase the following sentences: \"{sequence}\"\n"
                 
         elif "sd_blank_fill_0_shot_word" in variation_type:
             selected_style = ALL_SD_styles[random.randrange(
                 len(ALL_SD_styles))]
             prompt = f"You are required to fill in the blanks with more details {selected_style} for the input passage. If there is no blanks, please output the original passage: \"{masked_seq}\"\n"
-            #prompt = instruction + \
-                # f"Please fill in the blanks in the following sentences to write a passage of approximately 200 words in the tone of a person who is struggling with poverty: \"{masked_seq}\". Only use letters, digits, and standard punctuation marks like commas and periods. **End the passage with a single period, with no additional symbols or characters after it.**\n"
-            # prompt = "Please write a passage of approximately 200 words {} to describe a person who is struggling with poverty:\n{} \n".format(selected_style, masked_seq)
                 
         
         elif "openreview_blank_fill_1_shot_word" in variation_type:
@@ -933,8 +901,6 @@ class AzureDeepSeek(API):
         else:
             generations = deepseek_completions(all_prompts, model_name=self.model_type, engine_name=self.engine, openai_api_keys=[self.openai_api_key], openai_api_base=self.openai_api_base, num_procs=self.num_procs, top_p=0.95, temperature=self.temperature, sleep_time=self.sleep_time)['completions']
 
-        # **Added cleaning function **
-        #generations = batch_clean_texts(generations, use_threads=True, num_workers=8)
 
         gen_idx = -1
         for idx in tqdm(range(num_seq)):
@@ -942,9 +908,7 @@ class AzureDeepSeek(API):
                 gen_idx += 1
                 try:
                     seq = generations[gen_idx]
-                    #=======================
-                    #seq = allowed_characters.sub("", seq)  # Apply regex to remove unwanted 
-                    #=======================
+
                     seq = " ".join(seq.split())
                     if seq:
                         all_data[j].append(seq)

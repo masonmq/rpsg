@@ -12,7 +12,6 @@ def setup_logging(log_file):
              '%(message)s'),
         datefmt='%m/%d/%Y %H:%M:%S %p')
     root_logger = logging.getLogger()
-    # root_logger.setLevel(logging.DEBUG)
     root_logger.setLevel(logging.INFO)
 
     console_handler = logging.StreamHandler()
@@ -74,11 +73,9 @@ def log_prompt_generation(fname="prompt_generation.jsonl", prompts=[], generatio
         new_variants_samples.extend(x.tolist())
 
     if len(prompts) == 0 or len(new_variants_samples) == 0:
-    #if len(new_variants_samples) == 0:
         return
     with open(fname, "w") as file:
         for i in range(len(prompts)):
-        #for i in range(len(new_variants_samples)):
             try:
                 json_str = json.dumps(
                         {"prompt": prompts[i], "generation": new_variants_samples[i]})
@@ -128,9 +125,6 @@ def compute_fid(synthetic_features, all_private_features, feature_extractor, fol
     logging.info(f'fid={fid} F1={state}')
     log_fid(folder, fid, state["f1"],
             state["precision"], state["recall"], step)
-    # if log_online:
-    #     import wandb
-    #     wandb.log({f'metric/fid_{feature_extractor[:10]}': fid, }, step=step)
 
 
 def log_fid(folder, fid, f1, precision, recall, t, save_fname='fid.csv'):
@@ -157,7 +151,6 @@ def log_samples(samples, folder, additional_info=None):
         if not seq:
             continue
 
-        # normalize whitespace in the text
         seq_clean = " ".join(str(seq).split())
 
         row = [seq_clean]
@@ -168,10 +161,9 @@ def log_samples(samples, folder, additional_info=None):
             parts = labels.strip().split("\t") if isinstance(labels, str) else [str(labels)]
             tag = parts[0].lower() if parts else ""
             if "pubmed" in tag:
-                row = [seq_clean]  # only save text
+                row = [seq_clean]  
             elif "sd" in tag:
                 label1 = parts[1] if len(parts) > 1 else ""
-                # here label2 is the private length (already precomputed & stored as 3rd part)
                 label2 = parts[2] if len(parts) > 2 else ""
                 row = [seq_clean, label1, label2]
             else:
@@ -180,24 +172,20 @@ def log_samples(samples, folder, additional_info=None):
             if first_tag is None:
                 first_tag = tag
         else:
-            # no additional info provided, just keep the text
             row = [seq_clean]
             if first_tag is None:
                 first_tag = ""
 
         all_data.append(row)
 
-    # ----- headers -----
+
     if first_tag == "pubmed":
         title = ["text"]
     elif first_tag == "sd":
-        # for synthetic sd data we include sentiment + label2
         title = ["text", "label1", "label2"]
     elif additional_info is not None:
-        # generic case: just dump one 'label' column
         title = ["text", "label"]
     else:
-        # nothing extra
         title = ["text"]
 
     try:

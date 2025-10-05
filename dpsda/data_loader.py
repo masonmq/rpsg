@@ -130,28 +130,6 @@ def load_data(dataset="sd", data_file="data/sd/train.csv", num_samples=-1, subsa
         train_data = []
         train_labels = []
 
-        # for i, line in enumerate(original_data['train']):
-        #     text = line['text']
-        #     tokens = tokenizer(text, truncation=False)["input_ids"]  # Tokenize without truncation
-
-        #     # Split tokens into overlapping chunks
-        #     for j in range(0, len(tokens), max_token_length - stride):
-        #         chunk = tokens[j:j + max_token_length]  # Extract chunk
-        #         if len(chunk) == 0:
-        #             continue
-
-        #         # Decode tokens back to text for storage
-        #         chunk_text = tokenizer.decode(chunk, skip_special_tokens=True)
-        #         train_data.append(chunk_text)
-        #         train_labels.append("pubmed")
-
-        #         # Update prompt indexer and counter
-        #         prompt_counter["pubmed"] += 1
-        #         if "pubmed" not in prompt_idexer:
-        #             prompt_idexer["pubmed"] = [i]
-        #         else:
-        #             prompt_idexer["pubmed"].append(i)
-
         for i, line in enumerate(original_data['train']):
             prompt = f"pubmed"
             prompt_counter[prompt] += 1
@@ -165,10 +143,8 @@ def load_data(dataset="sd", data_file="data/sd/train.csv", num_samples=-1, subsa
             # if use private seeds, need to control the token length for gpt2 which max_token_length = 1024
             if max_token_length > 0:
                 tokenizer = AutoTokenizer.from_pretrained("gpt2")  # Replace with your model
-                # Truncate the text to fit the max_length token limit
                 tokenized = tokenizer(line['text'], truncation=True, max_length=max_token_length)
                 truncated_text = tokenizer.decode(tokenized['input_ids'], skip_special_tokens=True)
-                # Append the truncated text and label
                 train_data.append(truncated_text)
             #===========================
             else:
@@ -180,11 +156,11 @@ def load_data(dataset="sd", data_file="data/sd/train.csv", num_samples=-1, subsa
         prompt_counter = collections.Counter()
         raw_datasets = load_dataset_with_special(data_file, gen)
 
-        # Expect CSV columns: text,label1
+        # Expect CSV columns: text,label1. Using the sentiment column
         original_data = sample_dataset(
             dataset,
             raw_datasets,
-            label_column_name='label1',   # important: we’re using the sentiment column
+            label_column_name='label1',   # sentiment column
             sample_size=num_samples,
             subsample_one_class=subsample_one_class,
             random_seed=123
@@ -195,16 +171,15 @@ def load_data(dataset="sd", data_file="data/sd/train.csv", num_samples=-1, subsa
         train_labels = []
 
         for i, line in enumerate(original_data['train']):
-            sentiment = str(line['label1']).strip().lower()          # "positive"/"negative"
+            sentiment = str(line['label1']).strip().lower()          
             text = line['text']
             wc = len(text.split())
-            target_words = max(1, round(0.8 * wc))                   # your “a bit shorter” rule
+            target_words = max(1, round(0.8 * wc))                   
 
             prompt_counter[sentiment] += 1
             prompt_idexer.setdefault(sentiment, []).append(i)
 
-            train_data.append(text)                                   # private text
-            # PACK everything into additional_info (keeps framework)
+            train_data.append(text)                                  
             train_labels.append(f"sd\t{sentiment}\t{target_words}")
 
 

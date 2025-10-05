@@ -21,11 +21,8 @@ logging.getLogger("openai").setLevel(logging.ERROR)  # Suppress OpenAI API logs
 logging.getLogger("httpx").setLevel(logging.ERROR)  # Suppress HTTP request logs
 logging.getLogger("urllib3").setLevel(logging.ERROR)  # Suppress urllib3 logs
 logging.getLogger("asyncio").setLevel(logging.ERROR)  # Suppress asyncio logs
-
-# Suppress all warning messages globally
 logging.getLogger().setLevel(logging.ERROR)
 
-# Disable warnings completely (optional)
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -402,7 +399,7 @@ def main():
                     new_variants_samples.extend(x.tolist())
                 new_variants_additional_info = selected_additional_info * (args.combine_divide_L - 1)
                 logging.info(
-                    f'?????? second_variants_samples_stacked  {len(second_variants_samples_stacked)}')
+                    f'second_variants_samples_stacked  {len(second_variants_samples_stacked)}')
 
                 logging.info(f'new_variants_samples shape {len(new_variants_samples)} label {len(new_variants_additional_info)}')
 
