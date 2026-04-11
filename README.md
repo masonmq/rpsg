@@ -3,14 +3,17 @@
   
   Synthetic Data Generation</h1>
 
-In this work, we presented RPSG, a realistic and privacy-preserving synthetic data generation method. Empirical results demonstrate that RPSG consistently outperforms SOTA baselines in generating high-quality synthetic data, achieving strong utility while safeguarding privacy. 
+This is the official repository for the ACL 2026 findings paper:
+#### 🔍 [arXiv](https://arxiv.org/abs/2604.07486) | [BibTeX](#BibTeX)
+
+RPSG is a realistic and privacy-preserving synthetic data generation method. Empirical results demonstrate that RPSG consistently outperforms SOTA baselines in generating high-quality synthetic data, achieving strong utility while safeguarding privacy. 
 <p align="center">
-  <img src="figures/figure1.png" width="81%">
+  <img src="figures/figure1.png" width="90%">
 </p>
 
 
 
-## Setup
+## ⚙️ Setup
 ### Environment setup
 
 ```
@@ -43,7 +46,7 @@ bash scripts/embeddings.sh --pubmed
 
 
 
-## Run Scripts
+## 🚀 Run Scripts
 ### Each end-to-end script consists of data generation, filtering, performance evaluation, and PII detection.
 
 ```bash 
@@ -67,7 +70,21 @@ DeepSeek_CONFIG={
 <!-- ## Results
 The experimental results for Downstream Task Performance (Table 1), Lexical Diversity (Table 2), and Distributional and Semantic Similarity (Table 3) are located in the `result` directory. -->
 
-## Acknowledgement
+## 📄 BibTeX
+
+```
+@misc{ma2026privateseedspublicllms,
+      title={Private Seeds, Public LLMs: Realistic and Privacy-Preserving Synthetic Data Generation}, 
+      author={Qian Ma and Sarah Rajtmajer},
+      year={2026},
+      eprint={2604.07486},
+      archivePrefix={arXiv},
+      primaryClass={cs.CR},
+      url={https://arxiv.org/abs/2604.07486}, 
+}
+```
+
+## 👥 Acknowledgement
 
 - [AUG-PE](https://github.com/AI-secure/aug-pe)
 
