@@ -1,7 +1,6 @@
 
-<h1 align="center"> Private Seeds, Public LLMs: Realistic and Privacy-Preserving 
-  
-  Synthetic Data Generation</h1>
+<h1 align="center"> Private Seeds, Public LLMs: 
+Realistic and Privacy-Preserving Synthetic Data Generation</h1>
 
 Repository for the ACL 2026 Findings paper:
 ### 🔍 [arXiv](https://arxiv.org/abs/2604.07486) | [BibTeX](#bibtex)
