@@ -356,55 +356,6 @@ class HFAPI(API):
             ]
             return messages
 
-
-        '''
-        elif "phi4" in self.variation_type:
-            # Parse label fields: expected "sd\t<sentiment>\t<target_words>"
-            # Backward-compatible: if fields are missing, we just skip length hint.
-            _parts = str(label).strip().split("\t")
-            _tag = _parts[0].lower() if len(_parts) >= 1 else ""
-            _sent = _parts[1].strip().lower() if len(_parts) >= 2 else None
-            try:
-                _tgt_words = int(_parts[2]) if len(_parts) >= 3 else None
-            except:
-                _tgt_words = None
-
-            # Build the system prompt with sentiment + OPTIONAL length hint
-            if self.variation_type == "sd_phi4_rephrase_tone":
-                system_prompt = (
-                    "You are rewriting an abstracted self-disclosure into a realistic first-person passage. "
-                    "Preserve the core facts implied by the abstracted text, avoid adding new events, and keep the tone coherent. "
-                )
-                if _sent in {"positive", "negative"}:
-                    system_prompt += f"Ensure the rewritten text clearly expresses a {_sent} sentiment. "
-                # Soft length hint if available
-                if _tgt_words and _tgt_words > 0:
-                    # ±15% window without being too rigid
-                    lo = max(1, int(round(0.85 * _tgt_words)))
-                    hi = int(round(1.15 * _tgt_words))
-                    system_prompt += (
-                        f"Aim for about {_tgt_words} words (acceptable range {lo}–{hi}). "
-                        "Do not add meta commentary or instructions; write only the passage."
-                    )
-                else:
-                    system_prompt += "Write only the passage; no meta commentary."
-            else:
-                # e.g., pubmed variants
-                system_prompt = (
-                    "Rewrite the abstracted research summary into a clear, neutral abstract. "
-                    "Preserve meaning, avoid vivid metaphors or emotional language."
-                )
-                if _tgt_words and _tgt_words > 0:
-                    lo = max(1, int(round(0.85 * _tgt_words)))
-                    hi = int(round(1.15 * _tgt_words))``
-                    system_prompt += f" Aim for ~{_tgt_words} words (range {lo}–{hi})."
-
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": sequence}
-            ]
-            return messages
-            '''
         return prompt
     
 

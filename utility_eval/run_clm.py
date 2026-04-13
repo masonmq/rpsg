@@ -370,46 +370,127 @@ def main():
                 streaming=data_args.streaming,
             )
     else:
-        data_files = {}
-        dataset_args = {}
-        if data_args.train_file is not None:
-            data_files["train"] = data_args.train_file
-        if data_args.validation_file is not None:
-            data_files["validation"] = data_args.validation_file
-        extension = (
-            data_args.train_file.split(".")[-1]
-            if data_args.train_file is not None
-            else data_args.validation_file.split(".")[-1]
-        )
-        if extension == "txt":
-            extension = "text"
-            dataset_args["keep_linebreaks"] = data_args.keep_linebreaks
-        raw_datasets = load_dataset(
-            extension,
-            data_files=data_files,
-            cache_dir=model_args.cache_dir,
-            token=model_args.token,
-            **dataset_args,
-        )
-        # If no validation data is there, validation_split_percentage will be used to divide the dataset.
-        if "validation" not in raw_datasets.keys():
-            raw_datasets["validation"] = load_dataset(
-                extension,
-                data_files=data_files,
-                split=f"train[:{data_args.validation_split_percentage}%]",
-                cache_dir=model_args.cache_dir,
-                token=model_args.token,
-                **dataset_args,
-            )
-            raw_datasets["train"] = load_dataset(
-                extension,
-                data_files=data_files,
-                split=f"train[{data_args.validation_split_percentage}%:]",
-                cache_dir=model_args.cache_dir,
-                token=model_args.token,
-                **dataset_args,
-            )
+        import csv
+        import json
 
+        def _normalize_path(p):
+            if p is None:
+                return None
+            return os.path.abspath(os.fsdecode(p))
+
+        def _read_texts_only(path):
+            """Read only the text column from csv/json/txt and ignore any extra columns."""
+            if path is None:
+                return None
+
+            ext = path.split(".")[-1].lower()
+
+            if ext == "csv":
+                texts = []
+                with open(path, "r", encoding="utf-8", newline="") as f:
+                    reader = csv.DictReader(f)
+                    if reader.fieldnames is None:
+                        raise ValueError(f"No header found in CSV: {path}")
+
+                    text_col = "text" if "text" in reader.fieldnames else reader.fieldnames[0]
+
+                    for row in reader:
+                        val = row.get(text_col, "")
+                        if val is None:
+                            val = ""
+                        texts.append(str(val))
+
+                return datasets.Dataset.from_dict({"text": texts})
+
+            elif ext == "json":
+                texts = []
+                with open(path, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+
+                if not content:
+                    return datasets.Dataset.from_dict({"text": []})
+
+                lines_local = content.splitlines()
+                parsed_lines = []
+                is_jsonl = True
+                for line in lines_local:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        parsed_lines.append(json.loads(line))
+                    except Exception:
+                        is_jsonl = False
+                        break
+
+                if is_jsonl:
+                    for obj in parsed_lines:
+                        if isinstance(obj, dict):
+                            if "text" in obj:
+                                texts.append("" if obj["text"] is None else str(obj["text"]))
+                            else:
+                                first_key = next(iter(obj)) if len(obj) > 0 else None
+                                texts.append("" if first_key is None or obj[first_key] is None else str(obj[first_key]))
+                        else:
+                            texts.append(str(obj))
+                    return datasets.Dataset.from_dict({"text": texts})
+
+                obj = json.loads(content)
+                if isinstance(obj, list):
+                    for item in obj:
+                        if isinstance(item, dict):
+                            if "text" in item:
+                                texts.append("" if item["text"] is None else str(item["text"]))
+                            else:
+                                first_key = next(iter(item)) if len(item) > 0 else None
+                                texts.append("" if first_key is None or item[first_key] is None else str(item[first_key]))
+                        else:
+                            texts.append(str(item))
+                elif isinstance(obj, dict):
+                    if "text" in obj and isinstance(obj["text"], list):
+                        texts = ["" if x is None else str(x) for x in obj["text"]]
+                    else:
+                        first_key = next(iter(obj)) if len(obj) > 0 else None
+                        if first_key is not None and isinstance(obj[first_key], list):
+                            texts = ["" if x is None else str(x) for x in obj[first_key]]
+                        else:
+                            texts = [str(obj)]
+                else:
+                    texts = [str(obj)]
+
+                return datasets.Dataset.from_dict({"text": texts})
+
+            elif ext == "txt":
+                with open(path, "r", encoding="utf-8") as f:
+                    texts = [line.rstrip("\n") for line in f]
+                return datasets.Dataset.from_dict({"text": texts})
+
+            else:
+                raise ValueError(f"Unsupported file extension: {ext}")
+
+        train_file = _normalize_path(data_args.train_file)
+        validation_file = _normalize_path(data_args.validation_file)
+
+        logger.info(f"Normalized train_file: {train_file} (type={type(train_file)})")
+        logger.info(f"Normalized validation_file: {validation_file} (type={type(validation_file)})")
+
+        split_dict = {}
+
+        if train_file is not None:
+            split_dict["train"] = _read_texts_only(train_file)
+
+        if validation_file is not None:
+            split_dict["validation"] = _read_texts_only(validation_file)
+
+        if "train" in split_dict and "validation" not in split_dict:
+            split = split_dict["train"].train_test_split(
+                test_size=data_args.validation_split_percentage / 100.0,
+                seed=training_args.seed,
+            )
+            split_dict["train"] = split["train"]
+            split_dict["validation"] = split["test"]
+
+        raw_datasets = datasets.DatasetDict(split_dict)
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
 

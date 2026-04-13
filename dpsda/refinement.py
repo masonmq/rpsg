@@ -21,67 +21,6 @@ from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 from sentence_transformers import SentenceTransformer, util
 import math
 
-def abstract_texts_dp(
-    texts,
-    summarizer_model_name='facebook/bart-large-cnn',
-    embedding_model_name='sentence-t5-base',
-    num_candidates=5,
-    epsilon=1.0,
-    max_length=150,
-    min_length=10,
-    device='cuda' if torch.cuda.is_available() else 'cpu'
-):
-    tokenizer = AutoTokenizer.from_pretrained(summarizer_model_name)
-    summarizer_model = AutoModelForSeq2SeqLM.from_pretrained(summarizer_model_name).to(device)
-    embedding_model = SentenceTransformer(embedding_model_name, device=device)
-
-    N = len(texts)
-    delta = 1 / (N * np.log(N))
-    delta_u = 1.0
-    sigma = np.sqrt(2 * np.log(1.25 / delta)) * (delta_u / epsilon)
-
-    abstracted_texts = []
-
-    for text in tqdm(texts):
-        truncated_text = tokenizer.decode(
-            tokenizer(text, return_tensors="pt", max_length=512, truncation=True)["input_ids"][0],
-            skip_special_tokens=True
-        )
-
-        inputs = tokenizer(
-            [truncated_text] * num_candidates,
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=512
-        ).to(device)
-
-        outputs = summarizer_model.generate(
-            **inputs,
-            num_beams=8,
-            num_return_sequences=num_candidates,
-            do_sample=False,
-            max_length=max_length,
-            min_length=min_length,
-            early_stopping=True
-        )
-
-        candidates = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-
-        emb_input = embedding_model.encode(truncated_text, convert_to_tensor=True)
-        emb_candidates = embedding_model.encode(candidates, convert_to_tensor=True)
-        scores = util.cos_sim(emb_input, emb_candidates)[0].cpu().numpy()
-
-        noisy_scores = scores + np.random.normal(loc=0, scale=sigma, size=len(scores))
-
-        best_idx = np.argmax(noisy_scores)
-        selected_abstract = candidates[best_idx]
-
-        abstracted_texts.append(selected_abstract)
-
-    return abstracted_texts
-
-
 
 def _norm_bin_label(x) -> int:
     """Return 1 for positive, 0 for negative; anything else -> None (ignored)."""

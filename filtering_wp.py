@@ -26,7 +26,7 @@ def get_logprobs(texts, model, tokenizer, device, batch_size=32):
             else:
                 losses = loss.tolist()
 
-        all_log_probs.extend(losses)  # Use raw loss (NLL), do NOT negate
+        all_log_probs.extend(losses)  
 
     return all_log_probs
 
@@ -79,7 +79,7 @@ def main(args):
         chosen_idx = bin_indices[chosen_idx_in_bin]
         representative_private_texts.append(private_texts[chosen_idx])
 
-    print(f"====================== Selected {len(representative_private_texts)} representative private data points.")
+    print(f" Selected {len(representative_private_texts)} representative private data points.")
 
     # Step 2: Cosine similarity filtering
     synthetic_emb = get_embedding_batched(synthetic_texts, model, tokenizer, device, batch_size=64)
@@ -88,12 +88,13 @@ def main(args):
     similarity_matrix = cosine_similarity(synthetic_emb, private_emb)
     max_similarities = similarity_matrix.max(axis=1)
 
-    retain_fraction = 0.65
+    retain_fraction = 1 # 1 means retian 100%, e.g., can adjust to 0.5 to retain 50%  
     retain_count = int(len(synthetic_texts) * retain_fraction)
     bottom_percent_idx = max_similarities.argsort()[:retain_count]
-    filtered_synthetic_texts = [synthetic_texts[i] for i in bottom_percent_idx]
+    filtered_df = df_synthetic.iloc[bottom_percent_idx].copy()
+    filtered_synthetic_texts = filtered_df["text"].tolist()
 
-    print(f"===================== Retained {len(filtered_synthetic_texts)} synthetic points after embedding filtering.")
+    print(f" Retained {len(filtered_synthetic_texts)} synthetic points after embedding filtering.")
 
     # Step 3: Efficient vectorized pairwise NLL distance
     syn_nlls = get_logprobs(filtered_synthetic_texts, model, tokenizer, device, args.batch_size)
@@ -104,11 +105,16 @@ def main(args):
     final_scores = np.max(np.abs(syn_nlls[:, None] - priv_nlls[None, :]), axis=1)
 
     # Step 4: Thresholding by percentile
-    cutoff = np.percentile(final_scores, 55)
-    final_filtered_texts = [text for text, score in zip(filtered_synthetic_texts, final_scores) if score > cutoff]
+    alpha = 10  # 10th percentile threshold; smaller alpha keeps more samples
+    cutoff = np.percentile(final_scores, alpha)
 
-    print(f"========================= Retained {len(final_filtered_texts)} synthetic points after final log filtering.")
-    pd.DataFrame({"text": final_filtered_texts}).to_csv(args.output_csv, index=False)
+    eps = np.finfo(np.float64).eps * max(1.0, abs(cutoff))
+    keep_mask = np.array([score > (cutoff - eps) for score in final_scores])
+
+    final_filtered_df = filtered_df.iloc[keep_mask].copy()
+
+    print(f" Retained {len(final_filtered_df)} synthetic points after final log filtering.")
+    final_filtered_df.to_csv(args.output_csv, index=False)
 
 
 if __name__ == "__main__":

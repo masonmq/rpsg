@@ -21,6 +21,20 @@ pii_detector = pipeline(
     device=device
 )
 
+# Updated regex patterns
+# SENSITIVE_PATTERNS = {
+#     "Email": (r"<[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}>|\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "[EMAIL]"),
+#     "Phone": (r"\\(?\\d{3}\\)?[-.\\s]?\\d{3}[-.\\s]?\\d{4}", "[PHONE]"),
+#     "ZIP": (r"\\b\\d{5}(?:-\\d{4})?\\b", "[ZIPCODE]"),
+#     "NameAndID": (r"[^\\n()]{2,100}\\([a-zA-Z0-9_]{3,15}\\)", "[NAME_AND_ID]"),
+#     "CamelCaseName": (r"\\b[A-Z][a-z]+[A-Z][a-z]+\\b", "[NAME]"),
+#     "TitleName": (r"\\b(?:Dr|Mr|Ms|Mrs|Prof)\\.?\\s+[A-Z][a-z]+\\b", "[NAME]"),
+#     "UserID": (r"\\b[a-z]{3}\\d{1,3}\\b", "[USERID]"),
+#     "AccountID": (r"\\b[a-z]{2,6}\\d{2,4}_[a-z0-9]+\\b", "[ACCOUNT]"),
+#     "DoctorName": (r"\\bdr\\.?\\s?[a-z]+(?:'[a-z]+)?\\b", "[NAME]"),
+#     "TildeURL": (r"https?://[^\\s]*~[a-z]{2,20}|www\\.[^\\s]*~[a-z]{2,20}", "[URL_USER]"),
+# }
+
 SENSITIVE_PATTERNS = {
     "Email": (
         r"<[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}>|\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
@@ -127,16 +141,21 @@ def process_texts_parallel(text_list, num_workers=4, batch_size=500):
 
 def main(args):
     df = pd.read_csv(args.input_csv)
-    if "text" in df.columns:
-        syn_texts = df["text"].dropna().tolist()
-    else:
-        syn_texts = df.iloc[:, 0].dropna().tolist()
+
+    text_col = "text" if "text" in df.columns else df.columns[0]
+    mask = df[text_col].notna()
+
+    syn_texts = df.loc[mask, text_col].astype(str).tolist()
 
     print(f"Found {len(syn_texts)} synthetic samples.")
     sanitized_texts = [redact_text(t) for t in tqdm(syn_texts)]
+
     os.makedirs(args.output_dir, exist_ok=True)
-    out_df = pd.DataFrame({"text": sanitized_texts})
+
+    out_df = df.copy()
+    out_df.loc[mask, text_col] = sanitized_texts
     out_df.to_csv(args.output_csv, index=False)
+
     print(f"Sanitized dataset saved to {args.output_csv}")
 
 if __name__ == "__main__":
