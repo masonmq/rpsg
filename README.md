@@ -98,7 +98,7 @@ python eval_sentiment.py
 	--output_dir <out_dir>   
 ```
 
-## 📬
+## 📄
 ### BibTeX
 
 ```
@@ -116,4 +116,7 @@ python eval_sentiment.py
 ## 👥 Acknowledgement
 
 - [AUG-PE](https://github.com/AI-secure/aug-pe)
+
+## 📬 Questions
+Any questions please feel free to email Mason (qfm5033@psu.edu).
 
