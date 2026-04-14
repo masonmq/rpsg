@@ -3,7 +3,7 @@
 Realistic and Privacy-Preserving Synthetic Data Generation</h1>
 
 Repository for the ACL 2026 Findings paper:
-### 🔍 [arXiv](https://arxiv.org/abs/2604.07486) | [BibTeX](#bibtex)
+### 🔍 [arXiv](https://arxiv.org/pdf/2604.07486v2) | [BibTeX](#bibtex)
 
 RPSG is a realistic and privacy-preserving synthetic data generation method. Empirical results demonstrate that RPSG consistently outperforms SOTA baselines in generating high-quality synthetic data, achieving strong utility while safeguarding privacy. 
 <p align="center">
