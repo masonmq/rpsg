@@ -80,10 +80,9 @@ ${synthetic size}_n{private budget}_L2_initL2_var0_{dataset}_{llm}_rephrase_tone
 │   ├── samples.csv # randomly selected private samples
 ├── 1
 │   ├── samples.csv # synthetic variants, for training the surrogate model
-├── 1_all
-│   ├── samples.csv # synthetic samples before refinement
-│   ├── filtered_samples.csv # final synthetic samples
-│────
+└── 1_all
+    ├── samples.csv # synthetic samples before refinement
+    └── filtered_samples.csv # final synthetic samples
 ```
 
 ## 📊 Sentiment Evaluation
